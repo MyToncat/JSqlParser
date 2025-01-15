@@ -9,7 +9,6 @@
  */
 package net.sf.jsqlparser.statement;
 
-import java.util.Stack;
 import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.expression.BinaryExpression;
 import net.sf.jsqlparser.expression.ExpressionVisitorAdapter;
@@ -20,8 +19,11 @@ import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.statement.select.SelectVisitorAdapter;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import org.junit.jupiter.api.Test;
+
+import java.util.Stack;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class AdaptersTest {
 
@@ -33,37 +35,41 @@ public class AdaptersTest {
         String sql = "SELECT * FROM MYTABLE WHERE COLUMN_A = :paramA AND COLUMN_B <> :paramB";
         Statement stmnt = CCJSqlParserUtil.parse(sql);
 
-        final Stack<Pair<String, String>> params = new Stack<Pair<String, String>>();
-        stmnt.accept(new StatementVisitorAdapter() {
+        final Stack<Pair<String, String>> params = new Stack<>();
+        stmnt.accept(new StatementVisitorAdapter<Void>() {
             @Override
-            public void visit(Select select) {
-                select.getSelectBody().accept(new SelectVisitorAdapter() {
+            public <S> Void visit(Select select, S context) {
+                select.accept(new SelectVisitorAdapter<Void>() {
                     @Override
-                    public void visit(PlainSelect plainSelect) {
-                        plainSelect.getWhere().accept(new ExpressionVisitorAdapter() {
+                    public <K> Void visit(PlainSelect plainSelect, K context) {
+                        plainSelect.getWhere().accept(new ExpressionVisitorAdapter<Void>() {
                             @Override
-                            protected void visitBinaryExpression(BinaryExpression expr) {
+                            protected <J> Void visitBinaryExpression(BinaryExpression expr,
+                                    J context) {
                                 if (!(expr instanceof AndExpression)) {
-                                    params.push(new Pair<String, String>(null, null));
+                                    params.push(new Pair<>(null, null));
                                 }
-                                super.visitBinaryExpression(expr);
+                                return super.visitBinaryExpression(expr, context);
                             }
 
                             @Override
-                            public void visit(Column column) {
-                                params.push(new Pair<String, String>(column.getColumnName(), params.
-                                        pop().getRight()));
+                            public <J> Void visit(Column column, J context) {
+                                params.push(new Pair<>(column.getColumnName(),
+                                        params.pop().getRight()));
+                                return null;
                             }
 
                             @Override
-                            public void visit(JdbcNamedParameter parameter) {
-                                params.
-                                        push(new Pair<String, String>(params.pop().getLeft(), parameter.
-                                                getName()));
+                            public <J> Void visit(JdbcNamedParameter parameter, J context) {
+                                params.push(new Pair<>(params.pop().getLeft(),
+                                        parameter.getName()));
+                                return null;
                             }
-                        });
+                        }, null);
+                        return null;
                     }
-                });
+                }, null);
+                return null;
             }
         });
 
@@ -104,11 +110,10 @@ public class AdaptersTest {
 
         @Override
         public String toString() {
-            final StringBuilder sb = new StringBuilder("Pair{");
-            sb.append("left=").append(left);
-            sb.append(", right=").append(right);
-            sb.append('}');
-            return sb.toString();
+            String sb = "Pair{" + "left=" + left +
+                    ", right=" + right +
+                    '}';
+            return sb;
         }
     }
 }

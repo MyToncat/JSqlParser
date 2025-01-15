@@ -28,14 +28,15 @@ public class DeleteValidator extends AbstractValidator<Delete> {
             validateOptionalFeature(c, delete.getJoins(), Feature.deleteJoin);
             validateOptionalFeature(c, delete.getLimit(), Feature.deleteLimit);
             validateOptionalFeature(c, delete.getOrderByElements(), Feature.deleteOrderBy);
-            validateOptionalFeature(c, delete.getReturningExpressionList(), Feature.deleteReturningExpressionList);
+            validateOptionalFeature(c, delete.getReturningClause(),
+                    Feature.deleteReturningExpressionList);
         }
 
         SelectValidator v = getValidator(SelectValidator.class);
-        delete.getTable().accept(v);
+        delete.getTable().accept(v, null);
 
         if (isNotEmpty(delete.getTables())) {
-            delete.getTables().forEach(t -> t.accept(v));
+            delete.getTables().forEach(t -> t.accept(v, null));
         }
 
         validateOptionalExpression(delete.getWhere());
@@ -47,8 +48,8 @@ public class DeleteValidator extends AbstractValidator<Delete> {
             getValidator(LimitValidator.class).validate(delete.getLimit());
         }
 
-        if (isNotEmpty(delete.getReturningExpressionList())) {
-            delete.getReturningExpressionList().forEach(c -> c .accept(v));
+        if (delete.getReturningClause() != null) {
+            delete.getReturningClause().forEach(c -> c.accept(v, null));
         }
 
     }

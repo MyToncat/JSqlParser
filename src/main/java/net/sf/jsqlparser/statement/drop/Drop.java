@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.StatementVisitor;
@@ -30,29 +31,38 @@ public class Drop implements Statement {
     private boolean ifExists = false;
     private boolean materialized = false;
 
+    private boolean isUsingTemporary;
+
+    public static String formatFuncParams(List<String> params) {
+        if (params == null) {
+            return "";
+        }
+        return params.isEmpty() ? "()" : PlainSelect.getStringList(params, true, true);
+    }
+
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
     }
 
     public Table getName() {
         return name;
     }
 
-    public List<String> getParameters() {
-        return parameters;
-    }
-
-    public String getType() {
-        return type;
-    }
-
     public void setName(Table string) {
         name = string;
     }
 
+    public List<String> getParameters() {
+        return parameters;
+    }
+
     public void setParameters(List<String> list) {
         parameters = list;
+    }
+
+    public String getType() {
+        return type;
     }
 
     public void setType(String string) {
@@ -65,6 +75,19 @@ public class Drop implements Statement {
 
     public void setIfExists(boolean ifExists) {
         this.ifExists = ifExists;
+    }
+
+    public boolean isUsingTemporary() {
+        return isUsingTemporary;
+    }
+
+    public void setUsingTemporary(boolean useTemporary) {
+        this.isUsingTemporary = useTemporary;
+    }
+
+    public Drop withUsingTemporary(boolean useTemporary) {
+        setUsingTemporary(useTemporary);
+        return this;
     }
 
     public boolean isMaterialized() {
@@ -85,7 +108,8 @@ public class Drop implements Statement {
 
     @Override
     public String toString() {
-        String sql = "DROP " 
+        String sql = "DROP "
+                + (isUsingTemporary ? "TEMPORARY " : "")
                 + (materialized ? "MATERIALIZED " : "")
                 + type + " "
                 + (ifExists ? "IF EXISTS " : "") + name.toString();
@@ -99,13 +123,6 @@ public class Drop implements Statement {
         }
 
         return sql;
-    }
-
-    public static String formatFuncParams(List<String> params) {
-        if (params == null) {
-            return "";
-        }
-        return params.isEmpty() ? "()" : PlainSelect.getStringList(params, true, true);
     }
 
     public List<String> getParamsByType(String type) {

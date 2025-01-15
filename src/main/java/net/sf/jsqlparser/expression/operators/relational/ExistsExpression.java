@@ -15,8 +15,8 @@ import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 
 public class ExistsExpression extends ASTNodeAccessImpl implements Expression {
 
-    private Expression rightExpression;
-    private boolean not = false;
+    protected Expression rightExpression;
+    protected boolean not = false;
 
     public Expression getRightExpression() {
         return rightExpression;
@@ -35,8 +35,8 @@ public class ExistsExpression extends ASTNodeAccessImpl implements Expression {
     }
 
     @Override
-    public void accept(ExpressionVisitor expressionVisitor) {
-        expressionVisitor.visit(this);
+    public <T, S> T accept(ExpressionVisitor<T> expressionVisitor, S context) {
+        return expressionVisitor.visit(this, context);
     }
 
     public String getStringExpression() {

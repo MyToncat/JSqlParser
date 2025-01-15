@@ -11,19 +11,59 @@ package net.sf.jsqlparser.statement.select;
 
 import net.sf.jsqlparser.schema.Table;
 
-public interface FromItemVisitor {
+public interface FromItemVisitor<T> {
 
-    void visit(Table tableName);
+    <S> T visit(Table tableName, S context);
 
-    void visit(SubSelect subSelect);
+    default void visit(Table tableName) {
+        this.visit(tableName, null);
+    }
 
-    void visit(SubJoin subjoin);
+    <S> T visit(ParenthesedSelect selectBody, S context);
 
-    void visit(LateralSubSelect lateralSubSelect);
+    default void visit(ParenthesedSelect selectBody) {
+        this.visit(selectBody, null);
+    }
 
-    void visit(ValuesList valuesList);
+    <S> T visit(LateralSubSelect lateralSubSelect, S context);
 
-    void visit(TableFunction tableFunction);
+    default void visit(LateralSubSelect lateralSubSelect) {
+        this.visit(lateralSubSelect, null);
+    }
 
-    void visit(ParenthesisFromItem aThis);
+    <S> T visit(TableFunction tableFunction, S context);
+
+    default void visit(TableFunction tableFunction) {
+        this.visit(tableFunction, null);
+    }
+
+    <S> T visit(ParenthesedFromItem parenthesedFromItem, S context);
+
+    default void visit(ParenthesedFromItem parenthesedFromItem) {
+        this.visit(parenthesedFromItem, null);
+    }
+
+    <S> T visit(Values values, S context);
+
+    default void visit(Values values) {
+        this.visit(values, null);
+    }
+
+    <S> T visit(PlainSelect plainSelect, S context);
+
+    default void visit(PlainSelect plainSelect) {
+        this.visit(plainSelect, null);
+    }
+
+    <S> T visit(SetOperationList setOperationList, S context);
+
+    default void visit(SetOperationList setOperationList) {
+        this.visit(setOperationList, null);
+    }
+
+    <S> T visit(TableStatement tableStatement, S context);
+
+    default void visit(TableStatement tableStatement) {
+        this.visit(tableStatement, null);
+    }
 }

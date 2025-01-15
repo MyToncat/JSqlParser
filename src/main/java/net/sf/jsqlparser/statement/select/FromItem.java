@@ -9,38 +9,64 @@
  */
 package net.sf.jsqlparser.statement.select;
 
-import net.sf.jsqlparser.Model;
 import net.sf.jsqlparser.expression.Alias;
+import net.sf.jsqlparser.parser.ASTNodeAccess;
 
-public interface FromItem extends Model {
+public interface FromItem extends ASTNodeAccess {
 
-    void accept(FromItemVisitor fromItemVisitor);
+    <T, S> T accept(FromItemVisitor<T> fromItemVisitor, S context);
+
+    default void accept(FromItemVisitor<?> fromItemVisitor) {
+        this.accept(fromItemVisitor, null);
+    }
 
     Alias getAlias();
+
+    void setAlias(Alias alias);
 
     default FromItem withAlias(Alias alias) {
         setAlias(alias);
         return this;
     }
 
-    void setAlias(Alias alias);
-
     Pivot getPivot();
+
+    void setPivot(Pivot pivot);
 
     default FromItem withPivot(Pivot pivot) {
         setPivot(pivot);
         return this;
     }
 
-    void setPivot(Pivot pivot);
-
     UnPivot getUnPivot();
+
+    void setUnPivot(UnPivot unpivot);
 
     default FromItem withUnPivot(UnPivot unpivot) {
         setUnPivot(unpivot);
         return this;
     }
 
-    void setUnPivot(UnPivot unpivot);
+    default StringBuilder appendTo(StringBuilder builder, Alias alias) {
+        return appendTo(builder, alias, null, null);
+    }
+
+    default StringBuilder appendTo(StringBuilder builder, Alias alias, Pivot pivot,
+            UnPivot unPivot) {
+        if (alias != null) {
+            builder.append(alias);
+        }
+
+        if (pivot != null) {
+            builder.append(" ").append(pivot);
+        }
+
+        if (unPivot != null) {
+            builder.append(" ").append(unPivot);
+        }
+
+        return builder;
+    }
+
 
 }

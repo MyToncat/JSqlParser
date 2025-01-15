@@ -9,75 +9,68 @@
  */
 package net.sf.jsqlparser.statement.select;
 
+import net.sf.jsqlparser.expression.Alias;
+import net.sf.jsqlparser.statement.ParenthesedStatement;
+import net.sf.jsqlparser.statement.delete.ParenthesedDelete;
+import net.sf.jsqlparser.statement.insert.ParenthesedInsert;
+import net.sf.jsqlparser.statement.update.ParenthesedUpdate;
+
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
-import net.sf.jsqlparser.expression.operators.relational.ItemsList;
 
-public class WithItem implements SelectBody {
+public class WithItem<T extends ParenthesedStatement> implements Serializable {
+    private T statement;
+    private Alias alias;
+    private List<SelectItem<?>> withItemList;
+    private boolean recursive = false;
 
-    private String name;
-    private List<SelectItem> withItemList;
-    private ItemsList itemsList;
-    private boolean useValues = true;
-    private boolean useBracketsForValues = false;
+    private boolean materialized = false;
 
-    private SubSelect subSelect;
-    private boolean recursive;
-
-    /**
-     * Get the values (as VALUES (...) or SELECT)
-     *
-     * @return the values of the insert
-     */
-    public ItemsList getItemsList() {
-        return itemsList;
+    public WithItem(T statement, Alias alias) {
+        this.statement = statement;
+        this.alias = alias;
     }
 
-    public void setItemsList(ItemsList list) {
-        itemsList = list;
+    public WithItem() {
+        this(null, (Alias) null);
     }
 
-    public boolean isUseValues() {
-        return useValues;
+    public T getParenthesedStatement() {
+        return statement;
     }
 
-    public void setUseValues(boolean useValues) {
-        this.useValues = useValues;
+    public void setParenthesedStatement(T statement) {
+        this.statement = statement;
     }
 
-    public WithItem withItemsList(ItemsList itemsList) {
-        this.setItemsList(itemsList);
+    public WithItem<T> withParenthesedStatement(T statement) {
+        this.setParenthesedStatement(statement);
         return this;
     }
 
-    public WithItem withUseValues(boolean useValues) {
-        this.setUseValues(useValues);
+    public Alias getAlias() {
+        return alias;
+    }
+
+    public String getAliasName() {
+        return alias != null ? alias.getName() : null;
+    }
+
+    public String getUnquotedAliasName() {
+        return alias != null ? alias.getUnquotedName() : null;
+    }
+
+    public void setAlias(Alias alias) {
+        this.alias = alias;
+    }
+
+    public WithItem<?> withAlias(Alias alias) {
+        this.setAlias(alias);
         return this;
-    }
-
-    public boolean isUsingBracketsForValues() {
-        return useBracketsForValues;
-    }
-
-    public void setUseBracketsForValues(boolean useBracketsForValues) {
-        this.useBracketsForValues = useBracketsForValues;
-    }
-
-    public WithItem withUseBracketsForValues(boolean useBracketsForValues) {
-        this.setUseBracketsForValues(useBracketsForValues);
-        return this;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
     }
 
     public boolean isRecursive() {
@@ -88,12 +81,12 @@ public class WithItem implements SelectBody {
         this.recursive = recursive;
     }
 
-    public SubSelect getSubSelect() {
-        return subSelect;
+    public boolean isMaterialized() {
+        return materialized;
     }
 
-    public void setSubSelect(SubSelect subSelect) {
-        this.subSelect = subSelect.withUseBrackets(false);
+    public void setMaterialized(boolean materialized) {
+        this.materialized = materialized;
     }
 
     /**
@@ -101,73 +94,82 @@ public class WithItem implements SelectBody {
      *
      * @return a list of {@link SelectItem}s
      */
-    public List<SelectItem> getWithItemList() {
+    public List<SelectItem<?>> getWithItemList() {
         return withItemList;
     }
 
-    public void setWithItemList(List<SelectItem> withItemList) {
+    public void setWithItemList(List<SelectItem<?>> withItemList) {
         this.withItemList = withItemList;
     }
 
     @Override
-    @SuppressWarnings({"PMD.CyclomaticComplexity"})
     public String toString() {
         StringBuilder builder = new StringBuilder();
         builder.append(recursive ? "RECURSIVE " : "");
-        builder.append(name);
-        builder.append(
-                (withItemList != null) ? " " + PlainSelect.getStringList(withItemList, true, true) : "");
-        builder.append(" AS ");
-
-        if (useValues) {
-            builder.append("(VALUES ");
-            ExpressionList expressionList = (ExpressionList) itemsList;
-            builder.append(
-                    PlainSelect.getStringList(expressionList.getExpressions(), true, useBracketsForValues));
-            builder.append(")");
-        } else {
-            builder.append(subSelect.isUseBrackets() ? "" : "(");
-            builder.append(subSelect);
-
-            builder.append(subSelect.isUseBrackets() ? "" : ")");
+        if (alias != null) {
+            builder.append(alias.getName());
         }
+        if (withItemList != null) {
+            builder.append("(");
+            int size = withItemList.size();
+            for (int i = 0; i < size; i++) {
+                builder.append(withItemList.get(i)).append(i < size - 1 ? "," : "");
+            }
+            builder.append(")");
+        }
+        builder.append(" AS ");
+        builder.append(materialized ? "MATERIALIZED " : "");
+        builder.append(statement);
         return builder.toString();
     }
 
-    @Override
-    public void accept(SelectVisitor visitor) {
-        visitor.visit(this);
+    public <T, S> T accept(SelectVisitor<T> selectVisitor, S context) {
+        return selectVisitor.visit(this, context);
     }
 
-    public WithItem withName(String name) {
-        this.setName(name);
-        return this;
-    }
-
-    public WithItem withWithItemList(List<SelectItem> withItemList) {
+    public WithItem<?> withWithItemList(List<SelectItem<?>> withItemList) {
         this.setWithItemList(withItemList);
         return this;
     }
 
-    public WithItem withSubSelect(SubSelect subSelect) {
-        this.setSubSelect(subSelect);
-        return this;
-    }
-
-    public WithItem withRecursive(boolean recursive) {
+    public WithItem<?> withRecursive(boolean recursive, boolean materialized) {
         this.setRecursive(recursive);
+        this.setMaterialized(materialized);
         return this;
     }
 
-    public WithItem addWithItemList(SelectItem... withItemList) {
-        List<SelectItem> collection = Optional.ofNullable(getWithItemList()).orElseGet(ArrayList::new);
+    public WithItem<?> addWithItemList(SelectItem<?>... withItemList) {
+        List<SelectItem<?>> collection =
+                Optional.ofNullable(getWithItemList()).orElseGet(ArrayList::new);
         Collections.addAll(collection, withItemList);
         return this.withWithItemList(collection);
     }
 
-    public WithItem addWithItemList(Collection<? extends SelectItem> withItemList) {
-        List<SelectItem> collection = Optional.ofNullable(getWithItemList()).orElseGet(ArrayList::new);
+    public WithItem<?> addWithItemList(Collection<? extends SelectItem<?>> withItemList) {
+        List<SelectItem<?>> collection =
+                Optional.ofNullable(getWithItemList()).orElseGet(ArrayList::new);
         collection.addAll(withItemList);
         return this.withWithItemList(collection);
     }
+
+    public ParenthesedSelect getSelect() {
+        return (ParenthesedSelect) statement;
+    }
+
+    public ParenthesedInsert getInsert() {
+        return (ParenthesedInsert) statement;
+    }
+
+    public ParenthesedUpdate getUpdate() {
+        return (ParenthesedUpdate) statement;
+    }
+
+    public ParenthesedDelete getDelete() {
+        return (ParenthesedDelete) statement;
+    }
+
+    public void setSelect(ParenthesedSelect select) {
+        this.statement = (T) select;
+    }
+
 }

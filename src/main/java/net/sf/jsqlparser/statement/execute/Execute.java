@@ -9,18 +9,19 @@
  */
 package net.sf.jsqlparser.statement.execute;
 
-import java.util.List;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
+import net.sf.jsqlparser.expression.operators.relational.ParenthesedExpressionList;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.StatementVisitor;
 import net.sf.jsqlparser.statement.select.PlainSelect;
+
+import java.util.List;
 
 public class Execute implements Statement {
 
     private ExecType execType = ExecType.EXECUTE;
     private String name;
     private ExpressionList exprList;
-    private boolean parenthesis = false;
 
     public String getName() {
         return name;
@@ -56,24 +57,23 @@ public class Execute implements Statement {
         this.execType = execType;
     }
 
+    @Deprecated
     public boolean isParenthesis() {
-        return parenthesis;
-    }
-
-    public void setParenthesis(boolean parenthesis) {
-        this.parenthesis = parenthesis;
+        return exprList instanceof ParenthesedExpressionList;
     }
 
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
     }
 
     @Override
     public String toString() {
         return execType.name() + " " + name
-                + (exprList != null && exprList.getExpressions() != null ? " "
-                + PlainSelect.getStringList(exprList.getExpressions(), true, parenthesis) : "");
+                + (exprList != null
+                        ? " " + PlainSelect.getStringList(exprList, true,
+                                exprList instanceof ParenthesedExpressionList)
+                        : "");
     }
 
     public Execute withExecType(ExecType execType) {
@@ -91,14 +91,11 @@ public class Execute implements Statement {
         return this;
     }
 
-    public Execute withParenthesis(boolean parenthesis) {
-        this.setParenthesis(parenthesis);
-        return this;
-    }
-
     public enum ExecType {
-        EXECUTE,
-        EXEC,
-        CALL
+        EXECUTE, EXEC, CALL;
+
+        public static ExecType from(String type) {
+            return Enum.valueOf(ExecType.class, type.toUpperCase());
+        }
     }
 }

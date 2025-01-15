@@ -14,6 +14,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.StatementVisitor;
 
@@ -23,10 +24,11 @@ public class CreateSchema implements Statement {
     private String schemaName;
     private List<String> schemaPath;
     private List<Statement> statements = new ArrayList<>();
+    private boolean hasIfNotExists = false;
 
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
     }
 
     /**
@@ -34,7 +36,6 @@ public class CreateSchema implements Statement {
      *
      * @param statement The statement to be added
      * @return true if the operation was successful
-     *
      */
     public boolean addStatement(Statement statement) {
         return statements.add(statement);
@@ -44,10 +45,18 @@ public class CreateSchema implements Statement {
      * The owner of the schema.
      *
      * @return Owner name
-     *
      */
     public String getAuthorization() {
         return authorization;
+    }
+
+    /**
+     * The owner of the schems.
+     *
+     * @param authorization Owner name
+     */
+    public void setAuthorization(String authorization) {
+        this.authorization = authorization;
     }
 
     /**
@@ -60,57 +69,55 @@ public class CreateSchema implements Statement {
     }
 
     /**
-     * The path of the schema
-     *
-     * @return Schema path
-     *
-     */
-    public List<String> getSchemaPath() {
-        return schemaPath;
-    }
-
-    /**
-     * The statements executed as part of the schema creation
-     *
-     * @return the statements
-     *
-     */
-    public List<Statement> getStatements() {
-        return statements;
-    }
-
-    /**
-     * The owner of the schems.
-     *
-     * @param authorization Owner name
-     *
-     */
-    public void setAuthorization(String authorization) {
-        this.authorization = authorization;
-    }
-
-    /**
      * Set the name of the schema
      *
      * @param schemaName Schema name
-     *
      */
     public void setSchemaName(String schemaName) {
         this.schemaName = schemaName;
     }
 
     /**
+     * The path of the schema
+     *
+     * @return Schema path
+     */
+    public List<String> getSchemaPath() {
+        return schemaPath;
+    }
+
+    /**
      * Set the path of the schema
      *
      * @param schemaPath Schema path
-     *
      */
     public void setSchemaPath(List<String> schemaPath) {
         this.schemaPath = schemaPath;
     }
 
+    /**
+     * The statements executed as part of the schema creation
+     *
+     * @return the statements
+     */
+    public List<Statement> getStatements() {
+        return statements;
+    }
+
+    public boolean hasIfNotExists() {
+        return hasIfNotExists;
+    }
+
+    public CreateSchema setIfNotExists(boolean hasIfNotExists) {
+        this.hasIfNotExists = hasIfNotExists;
+        return this;
+    }
+
     public String toString() {
         String sql = "CREATE SCHEMA";
+        if (hasIfNotExists) {
+            sql += " IF NOT EXISTS";
+        }
         if (schemaName != null) {
             sql += " " + schemaName;
         }

@@ -12,23 +12,36 @@ package net.sf.jsqlparser.expression.operators.relational;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
 import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
+import net.sf.jsqlparser.schema.Column;
 
 public class IsNullExpression extends ASTNodeAccessImpl implements Expression {
 
     private Expression leftExpression;
     private boolean not = false;
     private boolean useIsNull = false;
+    private boolean useNotNull = false;
+
+    public IsNullExpression() {}
+
+    public IsNullExpression(Expression leftExpression) {
+        this.leftExpression = leftExpression;
+    }
+
+    public IsNullExpression(String columnName, boolean not) {
+        this.leftExpression = new Column(columnName);
+        this.not = not;
+    }
 
     public Expression getLeftExpression() {
         return leftExpression;
     }
 
-    public boolean isNot() {
-        return not;
-    }
-
     public void setLeftExpression(Expression expression) {
         leftExpression = expression;
+    }
+
+    public boolean isNot() {
+        return not;
     }
 
     public void setNot(boolean b) {
@@ -43,14 +56,25 @@ public class IsNullExpression extends ASTNodeAccessImpl implements Expression {
         this.useIsNull = useIsNull;
     }
 
+    public boolean isUseNotNull() {
+        return useNotNull;
+    }
+
+    public IsNullExpression setUseNotNull(boolean useNotNull) {
+        this.useNotNull = useNotNull;
+        return this;
+    }
+
     @Override
-    public void accept(ExpressionVisitor expressionVisitor) {
-        expressionVisitor.visit(this);
+    public <T, S> T accept(ExpressionVisitor<T> expressionVisitor, S context) {
+        return expressionVisitor.visit(this, context);
     }
 
     @Override
     public String toString() {
-        if (isUseIsNull()) {
+        if (useNotNull) {
+            return leftExpression + " NOTNULL";
+        } else if (useIsNull) {
             return leftExpression + (not ? " NOT" : "") + " ISNULL";
         } else {
             return leftExpression + " IS " + (not ? "NOT " : "") + "NULL";

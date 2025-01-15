@@ -9,11 +9,13 @@
  */
 package net.sf.jsqlparser.expression;
 
+import java.io.Serializable;
 import java.util.List;
+
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.statement.select.OrderByElement;
 
-public class WindowDefinition {
+public class WindowDefinition implements Serializable {
 
 
     final OrderByClause orderBy = new OrderByClause();
@@ -53,7 +55,8 @@ public class WindowDefinition {
         setPartitionExpressionList(partitionExpressionList, false);
     }
 
-    public void setPartitionExpressionList(ExpressionList partitionExpressionList, boolean brackets) {
+    public void setPartitionExpressionList(ExpressionList partitionExpressionList,
+            boolean brackets) {
         partitionBy.setPartitionExpressionList(partitionExpressionList, brackets);
     }
 
@@ -64,7 +67,7 @@ public class WindowDefinition {
     public void setWindowName(String windowName) {
         this.windowName = windowName;
     }
-    
+
     public WindowDefinition withWindowName(String windowName) {
         setWindowName(windowName);
         return this;

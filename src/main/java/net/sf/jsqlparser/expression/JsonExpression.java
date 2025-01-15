@@ -9,20 +9,34 @@
  */
 package net.sf.jsqlparser.expression;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+
 public class JsonExpression extends ASTNodeAccessImpl implements Expression {
+    private final List<Map.Entry<Expression, String>> idents = new ArrayList<>();
     private Expression expr;
 
-    private List<String> idents = new ArrayList<String>();
-    private List<String> operators = new ArrayList<String>();
+    public JsonExpression() {
+
+    }
+
+    public JsonExpression(Expression expr) {
+        this.expr = expr;
+    }
+
+    public JsonExpression(Expression expr, List<Map.Entry<Expression, String>> idents) {
+        this.expr = expr;
+        this.idents.addAll(idents);
+    }
 
     @Override
-    public void accept(ExpressionVisitor expressionVisitor) {
-        expressionVisitor.visit(this);
+    public <T, S> T accept(ExpressionVisitor<T> expressionVisitor, S context) {
+        return expressionVisitor.visit(this, context);
     }
 
     public Expression getExpression() {
@@ -33,25 +47,47 @@ public class JsonExpression extends ASTNodeAccessImpl implements Expression {
         this.expr = expr;
     }
 
-    public void addIdent(String ident, String operator) {
-        idents.add(ident);
-        operators.add(operator);
+    public void addIdent(Expression ident, String operator) {
+        idents.add(new AbstractMap.SimpleEntry<>(ident, operator));
     }
 
-    public List<String> getIdents() {
+    public void addAllIdents(Collection<Map.Entry<Expression, String>> idents) {
+        this.idents.addAll(idents);
+    }
+
+    public List<Map.Entry<Expression, String>> getIdentList() {
         return idents;
     }
 
+    public Map.Entry<Expression, String> getIdent(int index) {
+        return idents.get(index);
+    }
+
+    @Deprecated
+    public List<Expression> getIdents() {
+        ArrayList<Expression> l = new ArrayList<>();
+        for (Map.Entry<Expression, String> ident : idents) {
+            l.add(ident.getKey());
+        }
+
+        return l;
+    }
+
+    @Deprecated
     public List<String> getOperators() {
-        return operators;
+        ArrayList<String> l = new ArrayList<>();
+        for (Map.Entry<Expression, String> ident : idents) {
+            l.add(ident.getValue());
+        }
+        return l;
     }
 
     @Override
     public String toString() {
         StringBuilder b = new StringBuilder();
         b.append(expr.toString());
-        for (int i = 0; i < idents.size(); i++) {
-            b.append(operators.get(i)).append(idents.get(i));
+        for (Map.Entry<Expression, String> ident : idents) {
+            b.append(ident.getValue()).append(ident.getKey());
         }
         return b.toString();
     }

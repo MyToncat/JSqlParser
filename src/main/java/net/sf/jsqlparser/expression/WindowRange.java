@@ -9,7 +9,9 @@
  */
 package net.sf.jsqlparser.expression;
 
-public class WindowRange {
+import java.io.Serializable;
+
+public class WindowRange implements Serializable {
 
     private WindowOffset start;
     private WindowOffset end;
@@ -32,12 +34,10 @@ public class WindowRange {
 
     @Override
     public String toString() {
-        StringBuilder buffer = new StringBuilder();
-        buffer.append(" BETWEEN");
-        buffer.append(start);
-        buffer.append(" AND");
-        buffer.append(end);
-        return buffer.toString();
+        return " BETWEEN" +
+                start +
+                " AND" +
+                end;
     }
 
     public WindowRange withStart(WindowOffset start) {

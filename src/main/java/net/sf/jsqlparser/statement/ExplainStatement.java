@@ -9,25 +9,61 @@
  */
 package net.sf.jsqlparser.statement;
 
-import net.sf.jsqlparser.statement.select.Select;
-
+import java.io.Serializable;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.stream.Collectors;
+
+import net.sf.jsqlparser.schema.Table;
+import net.sf.jsqlparser.statement.select.Select;
 
 /**
  * An {@code EXPLAIN} statement
  */
 public class ExplainStatement implements Statement {
-
+    private String keyword;
     private Select select;
     private LinkedHashMap<OptionType, Option> options;
+    private Table table;
+
+    public ExplainStatement(String keyword) {
+        this.keyword = keyword;
+    }
 
     public ExplainStatement() {
-        // empty constructor
+        this("EXPLAIN");
+    }
+
+    public ExplainStatement(String keyword, Table table) {
+        this.keyword = keyword;
+        this.table = table;
+        this.select = null;
+    }
+
+    public ExplainStatement(String keyword, Select select, List<Option> optionList) {
+        this.keyword = keyword;
+        this.select = select;
+        this.table = null;
+
+        if (optionList != null && !optionList.isEmpty()) {
+            options = new LinkedHashMap<>();
+            for (Option o : optionList) {
+                options.put(o.getType(), o);
+            }
+        }
     }
 
     public ExplainStatement(Select select) {
-        this.select = select;
+        this("EXPLAIN", select, null);
+    }
+
+    public Table getTable() {
+        return table;
+    }
+
+    public ExplainStatement setTable(Table table) {
+        this.table = table;
+        return this;
     }
 
     public Select getStatement() {
@@ -52,8 +88,10 @@ public class ExplainStatement implements Statement {
 
     /**
      * Returns the first option that matches this optionType
+     *
      * @param optionType the option type to retrieve an Option for
-     * @return an option of that type, or null. In case of duplicate options, the first found option will be returned.
+     * @return an option of that type, or null. In case of duplicate options, the first found option
+     *         will be returned.
      */
     public Option getOption(OptionType optionType) {
         if (options == null) {
@@ -62,33 +100,50 @@ public class ExplainStatement implements Statement {
         return options.get(optionType);
     }
 
-    @Override
-    public String toString() {
-        StringBuilder statementBuilder = new StringBuilder("EXPLAIN");
-        if (options != null) {
-            statementBuilder.append(" ");
-            statementBuilder.append(options.values().stream().map(Option::formatOption).collect(Collectors.joining(" ")));
-        }
+    public String getKeyword() {
+        return keyword;
+    }
 
-        statementBuilder.append(" ");
-        statementBuilder.append(select.toString());
-        return statementBuilder.toString();
+    public ExplainStatement setKeyword(String keyword) {
+        this.keyword = keyword;
+        return this;
     }
 
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public String toString() {
+        StringBuilder builder = new StringBuilder(keyword);
+        if (table != null) {
+            builder.append(" ").append(table);
+        } else {
+            if (options != null) {
+                builder.append(" ");
+                builder.append(options.values().stream().map(Option::formatOption)
+                        .collect(Collectors.joining(" ")));
+            }
+
+            builder.append(" ");
+            if (select != null) {
+                select.appendTo(builder);
+            }
+        }
+
+        return builder.toString();
+    }
+
+    @Override
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
     }
 
     public enum OptionType {
-        ANALYZE,
-        VERBOSE,
-        COSTS,
-        BUFFERS,
-        FORMAT
+        ANALYZE, VERBOSE, COSTS, BUFFERS, FORMAT, PLAN, PLAN_FOR;
+
+        public static OptionType from(String type) {
+            return Enum.valueOf(OptionType.class, type.toUpperCase());
+        }
     }
 
-    public static class Option {
+    public static class Option implements Serializable {
 
         private final OptionType type;
         private String value;
@@ -110,9 +165,9 @@ public class ExplainStatement implements Statement {
         }
 
         public String formatOption() {
-            return type.name() + ( value != null 
-                                                        ? " " + value 
-                                                        : "" );
+            return type.name().replace("_", " ") + (value != null
+                    ? " " + value
+                    : "");
         }
 
         public Option withValue(String value) {

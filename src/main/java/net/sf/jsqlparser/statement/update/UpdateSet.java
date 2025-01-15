@@ -11,17 +11,17 @@ package net.sf.jsqlparser.statement.update;
 
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
+import net.sf.jsqlparser.expression.operators.relational.ParenthesedExpressionList;
 import net.sf.jsqlparser.schema.Column;
+import net.sf.jsqlparser.statement.select.Select;
 
-import java.util.ArrayList;
+import java.io.Serializable;
 import java.util.Collection;
 import java.util.Objects;
 
-public class UpdateSet {
-    protected boolean usingBracketsForColumns = false;
-    protected boolean usingBracketsForValues = false;
-    protected ArrayList<Column> columns = new ArrayList<>();
-    protected ArrayList<Expression> expressions = new ArrayList<>();
+public class UpdateSet implements Serializable {
+    protected ExpressionList<Column> columns = new ExpressionList<>();
+    protected ExpressionList<Expression> values = new ExpressionList<>();
 
     public UpdateSet() {
 
@@ -31,63 +31,13 @@ public class UpdateSet {
         this.columns.add(column);
     }
 
-    public UpdateSet(Column column, Expression expression) {
+    public UpdateSet(Column column, Expression value) {
         this.columns.add(column);
-        this.expressions.add(expression);
+        this.values.add(value);
     }
 
-    public boolean isUsingBracketsForValues() {
-        return usingBracketsForValues;
-    }
-
-    public void setUsingBracketsForValues(boolean usingBracketsForValues) {
-        this.usingBracketsForValues = usingBracketsForValues;
-    }
-
-    public boolean isUsingBracketsForColumns() {
-        return usingBracketsForColumns;
-    }
-
-    public void setUsingBracketsForColumns(boolean usingBracketsForColumns) {
-        this.usingBracketsForColumns = usingBracketsForColumns;
-    }
-
-    public ArrayList<Column> getColumns() {
-        return columns;
-    }
-
-    public void setColumns(ArrayList<Column> columns) {
-        this.columns = Objects.requireNonNull(columns);
-    }
-
-    public ArrayList<Expression> getExpressions() {
-        return expressions;
-    }
-
-    public void setExpressions(ArrayList<Expression> expressions) {
-        this.expressions = Objects.requireNonNull(expressions);
-    }
-
-    public void add(Column column, Expression expression) {
-        columns.add(column);
-        expressions.add(expression);
-    }
-
-    public void add(Column column) {
-        columns.add(column);
-    }
-
-    public void add(Expression expression) {
-        expressions.add(expression);
-    }
-
-    public void add(ExpressionList expressionList) {
-        expressions.addAll(expressionList.getExpressions());
-    }
-
-    public final static StringBuilder appendUpdateSetsTo(StringBuilder builder, Collection<UpdateSet> updateSets) {
-        builder.append(" SET ");
-
+    public final static StringBuilder appendUpdateSetsTo(StringBuilder builder,
+            Collection<UpdateSet> updateSets) {
         int j = 0;
         for (UpdateSet updateSet : updateSets) {
             updateSet.appendTo(builder, j);
@@ -96,43 +46,75 @@ public class UpdateSet {
         return builder;
     }
 
+    public ExpressionList<Column> getColumns() {
+        return columns;
+    }
+
+    public void setColumns(ExpressionList<Column> columns) {
+        this.columns = Objects.requireNonNull(columns);
+    }
+
+    public Column getColumn(int index) {
+        return columns.get(index);
+    }
+
+    public ExpressionList<?> getValues() {
+        return values;
+    }
+
+    public void setValues(ExpressionList values) {
+        this.values = Objects.requireNonNull(values);
+    }
+
+    public Expression getValue(int index) {
+        return values.get(index);
+    }
+
+    public void add(Column column, Expression value) {
+        this.add(column);
+        this.add(value);
+    }
+
+    /**
+     * Add another column to the existing column list. Transform this list into a
+     * ParenthesedExpression list when needed.
+     *
+     * @param column
+     */
+    public void add(Column column) {
+        if (!columns.isEmpty() && !(columns instanceof ParenthesedExpressionList)) {
+            columns = new ParenthesedExpressionList<>(columns);
+        }
+        columns.add(column);
+    }
+
+    /**
+     * Add another expression to the existing value list. Transform this list into a
+     * ParenthesedExpression list when needed.
+     *
+     * @param expression
+     */
+    public void add(Expression expression) {
+        if (!values.isEmpty() && !(values instanceof ParenthesedExpressionList)) {
+            values = new ParenthesedExpressionList<>(values);
+        }
+        values.add(expression);
+    }
+
+    public void add(ExpressionList<?> expressionList) {
+        values.addAll(expressionList);
+    }
+
     @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.NPath"})
     StringBuilder appendTo(StringBuilder builder, int j) {
         if (j > 0) {
             builder.append(", ");
         }
-
-        if (usingBracketsForColumns) {
-            builder.append("(");
-        }
-
-        for (int i = 0; i < columns.size(); i++) {
-            if (i > 0) {
-                builder.append(", ");
-            }
-            builder.append(columns.get(i));
-        }
-
-        if (usingBracketsForColumns) {
-            builder.append(")");
-        }
-
+        builder.append(
+                Select.getStringList(columns, true, columns instanceof ParenthesedExpressionList));
         builder.append(" = ");
-
-        if (usingBracketsForValues) {
-            builder.append("(");
-        }
-
-        for (int i = 0; i < expressions.size(); i++) {
-            if (i > 0) {
-                builder.append(", ");
-            }
-            builder.append(expressions.get(i));
-        }
-        if (usingBracketsForValues) {
-            builder.append(")");
-        }
-
+        builder.append(
+                Select.getStringList(values, true, values instanceof ParenthesedExpressionList));
         return builder;
     }
 

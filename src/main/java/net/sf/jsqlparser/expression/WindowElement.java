@@ -9,13 +9,9 @@
  */
 package net.sf.jsqlparser.expression;
 
-public class WindowElement {
+import java.io.Serializable;
 
-    public enum Type {
-
-        ROWS,
-        RANGE
-    }
+public class WindowElement implements Serializable {
 
     private Type type;
     private WindowOffset offset;
@@ -71,6 +67,14 @@ public class WindowElement {
     public WindowElement withRange(WindowRange range) {
         this.setRange(range);
         return this;
+    }
+
+    public enum Type {
+        ROWS, RANGE;
+
+        public static Type from(String type) {
+            return Enum.valueOf(Type.class, type.toUpperCase());
+        }
     }
 
 }

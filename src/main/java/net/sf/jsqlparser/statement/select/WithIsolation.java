@@ -10,13 +10,16 @@
 package net.sf.jsqlparser.statement.select;
 
 
-public class WithIsolation {
+import java.io.Serializable;
+
+public class WithIsolation implements Serializable {
 
     private String isolation = "UR";
 
     public String getIsolation() {
         return this.isolation;
     }
+
     public void setIsolation(String s) {
         this.isolation = s;
     }

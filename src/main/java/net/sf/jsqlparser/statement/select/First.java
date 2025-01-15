@@ -11,12 +11,9 @@ package net.sf.jsqlparser.statement.select;
 
 import net.sf.jsqlparser.expression.JdbcParameter;
 
-public class First {
+import java.io.Serializable;
 
-    public enum Keyword {
-        FIRST,
-        LIMIT
-    }
+public class First implements Serializable {
 
     private Keyword keyword;
     private Long rowCount;
@@ -69,7 +66,7 @@ public class First {
 
         return result;
     }
-    
+
     public First withKeyword(Keyword keyword) {
         this.setKeyword(keyword);
         return this;
@@ -88,5 +85,13 @@ public class First {
     public First withVariable(String variable) {
         this.setVariable(variable);
         return this;
+    }
+
+    public enum Keyword {
+        FIRST, LIMIT;
+
+        public static Keyword from(String keyword) {
+            return Enum.valueOf(Keyword.class, keyword.toUpperCase());
+        }
     }
 }

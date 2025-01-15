@@ -9,73 +9,156 @@
  */
 package net.sf.jsqlparser.util.deparser;
 
-import java.util.Iterator;
-import java.util.List;
-import static java.util.stream.Collectors.joining;
-
-import net.sf.jsqlparser.expression.*;
-import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
-import net.sf.jsqlparser.expression.operators.relational.ItemsList;
-import net.sf.jsqlparser.expression.operators.relational.ItemsListVisitor;
-import net.sf.jsqlparser.expression.operators.relational.MultiExpressionList;
-import net.sf.jsqlparser.expression.operators.relational.NamedExpressionList;
+import net.sf.jsqlparser.expression.Alias;
+import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.expression.ExpressionVisitor;
+import net.sf.jsqlparser.expression.MySQLIndexHint;
+import net.sf.jsqlparser.expression.OracleHint;
+import net.sf.jsqlparser.expression.SQLServerHints;
+import net.sf.jsqlparser.expression.WindowDefinition;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
-import net.sf.jsqlparser.statement.select.AllColumns;
-import net.sf.jsqlparser.statement.select.AllTableColumns;
+import net.sf.jsqlparser.statement.select.Distinct;
 import net.sf.jsqlparser.statement.select.Fetch;
 import net.sf.jsqlparser.statement.select.First;
 import net.sf.jsqlparser.statement.select.FromItem;
 import net.sf.jsqlparser.statement.select.FromItemVisitor;
 import net.sf.jsqlparser.statement.select.Join;
 import net.sf.jsqlparser.statement.select.LateralSubSelect;
+import net.sf.jsqlparser.statement.select.LateralView;
 import net.sf.jsqlparser.statement.select.Offset;
 import net.sf.jsqlparser.statement.select.OptimizeFor;
-import net.sf.jsqlparser.statement.select.ParenthesisFromItem;
+import net.sf.jsqlparser.statement.select.OrderByElement;
+import net.sf.jsqlparser.statement.select.ParenthesedFromItem;
+import net.sf.jsqlparser.statement.select.ParenthesedSelect;
 import net.sf.jsqlparser.statement.select.Pivot;
 import net.sf.jsqlparser.statement.select.PivotVisitor;
 import net.sf.jsqlparser.statement.select.PivotXml;
 import net.sf.jsqlparser.statement.select.PlainSelect;
-import net.sf.jsqlparser.statement.select.SelectExpressionItem;
 import net.sf.jsqlparser.statement.select.SelectItem;
 import net.sf.jsqlparser.statement.select.SelectItemVisitor;
 import net.sf.jsqlparser.statement.select.SelectVisitor;
 import net.sf.jsqlparser.statement.select.SetOperationList;
 import net.sf.jsqlparser.statement.select.Skip;
-import net.sf.jsqlparser.statement.select.SubJoin;
-import net.sf.jsqlparser.statement.select.SubSelect;
 import net.sf.jsqlparser.statement.select.TableFunction;
+import net.sf.jsqlparser.statement.select.TableStatement;
 import net.sf.jsqlparser.statement.select.Top;
 import net.sf.jsqlparser.statement.select.UnPivot;
-import net.sf.jsqlparser.statement.select.ValuesList;
+import net.sf.jsqlparser.statement.select.Values;
 import net.sf.jsqlparser.statement.select.WithItem;
-import net.sf.jsqlparser.statement.values.ValuesStatement;
 
-@SuppressWarnings({"PMD.CyclomaticComplexity"})
+import java.lang.reflect.InvocationTargetException;
+import java.util.Iterator;
+import java.util.List;
+
+import static java.util.stream.Collectors.joining;
+
+@SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.NPathComplexity"})
 public class SelectDeParser extends AbstractDeParser<PlainSelect>
-        implements SelectVisitor, SelectItemVisitor, FromItemVisitor, PivotVisitor, ItemsListVisitor {
+        implements SelectVisitor<StringBuilder>, SelectItemVisitor<StringBuilder>,
+        FromItemVisitor<StringBuilder>, PivotVisitor<StringBuilder> {
 
-    private ExpressionVisitor expressionVisitor;
+    private ExpressionVisitor<StringBuilder> expressionVisitor;
 
     public SelectDeParser() {
         this(new StringBuilder());
     }
 
     public SelectDeParser(StringBuilder buffer) {
-        this(new ExpressionVisitorAdapter(), buffer);
+        super(buffer);
+        this.expressionVisitor = new ExpressionDeParser(this, buffer);
     }
 
-    public SelectDeParser(ExpressionVisitor expressionVisitor, StringBuilder buffer) {
+    public SelectDeParser(Class<? extends ExpressionDeParser> expressionDeparserClass,
+            StringBuilder builder) throws NoSuchMethodException, InvocationTargetException,
+            InstantiationException, IllegalAccessException {
+        super(builder);
+        this.expressionVisitor =
+                expressionDeparserClass.getConstructor(SelectDeParser.class, StringBuilder.class)
+                        .newInstance(this, builder);
+    }
+
+    public SelectDeParser(Class<? extends ExpressionDeParser> expressionDeparserClass)
+            throws NoSuchMethodException, InvocationTargetException, InstantiationException,
+            IllegalAccessException {
+        this(expressionDeparserClass, new StringBuilder());
+    }
+
+
+    public SelectDeParser(ExpressionVisitor<StringBuilder> expressionVisitor,
+            StringBuilder buffer) {
         super(buffer);
         this.expressionVisitor = expressionVisitor;
     }
 
     @Override
-    @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.ExcessiveMethodLength", "PMD.NPathComplexity"})
-    public void visit(PlainSelect plainSelect) {
-        if (plainSelect.isUseBrackets()) {
-            buffer.append("(");
+    public <S> StringBuilder visit(ParenthesedSelect select, S context) {
+        List<WithItem<?>> withItemsList = select.getWithItemsList();
+        if (withItemsList != null && !withItemsList.isEmpty()) {
+            buffer.append("WITH ");
+            for (WithItem<?> withItem : withItemsList) {
+                withItem.accept((SelectVisitor<?>) this, context);
+                buffer.append(" ");
+            }
         }
+
+        buffer.append("(");
+        select.getSelect().accept((SelectVisitor<StringBuilder>) this, context);
+        buffer.append(")");
+
+        if (select.getOrderByElements() != null) {
+            new OrderByDeParser(expressionVisitor, buffer).deParse(select.isOracleSiblings(),
+                    select.getOrderByElements());
+        }
+
+        Alias alias = select.getAlias();
+        if (alias != null) {
+            buffer.append(alias);
+        }
+        Pivot pivot = select.getPivot();
+        if (pivot != null) {
+            pivot.accept(this, context);
+        }
+        UnPivot unpivot = select.getUnPivot();
+        if (unpivot != null) {
+            unpivot.accept(this, context);
+        }
+
+        if (select.getLimit() != null) {
+            new LimitDeparser(expressionVisitor, buffer).deParse(select.getLimit());
+        }
+        if (select.getOffset() != null) {
+            visit(select.getOffset());
+        }
+        if (select.getFetch() != null) {
+            visit(select.getFetch());
+        }
+        if (select.getIsolation() != null) {
+            buffer.append(select.getIsolation().toString());
+        }
+        return buffer;
+    }
+
+    public void visit(Top top) {
+        buffer.append(top).append(" ");
+    }
+
+    @Override
+    @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.ExcessiveMethodLength",
+            "PMD.NPathComplexity"})
+    public <S> StringBuilder visit(PlainSelect plainSelect, S context) {
+        List<WithItem<?>> withItemsList = plainSelect.getWithItemsList();
+        if (withItemsList != null && !withItemsList.isEmpty()) {
+            buffer.append("WITH ");
+            for (Iterator<WithItem<?>> iter = withItemsList.iterator(); iter.hasNext();) {
+                iter.next().accept((SelectVisitor<?>) this, context);
+                if (iter.hasNext()) {
+                    buffer.append(",");
+                }
+                buffer.append(" ");
+            }
+        }
+
         buffer.append("SELECT ");
 
         if (plainSelect.getMySqlHintStraightJoin()) {
@@ -97,30 +180,22 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
             buffer.append(first).append(" ");
         }
 
-        if (plainSelect.getDistinct() != null) {
-            if (plainSelect.getDistinct().isUseUnique()) {
-                buffer.append("UNIQUE ");
-            } else {
-                buffer.append("DISTINCT ");
-            }
-            if (plainSelect.getDistinct().getOnSelectItems() != null) {
-                buffer.append("ON (");
-                for (Iterator<SelectItem> iter = plainSelect.getDistinct().getOnSelectItems().iterator(); iter
-                        .hasNext();) {
-                    SelectItem selectItem = iter.next();
-                    selectItem.accept(this);
-                    if (iter.hasNext()) {
-                        buffer.append(", ");
-                    }
-                }
-                buffer.append(") ");
-            }
+        deparseDistinctClause(plainSelect.getDistinct());
 
+        if (plainSelect.getBigQuerySelectQualifier() != null) {
+            switch (plainSelect.getBigQuerySelectQualifier()) {
+                case AS_STRUCT:
+                    buffer.append("AS STRUCT ");
+                    break;
+                case AS_VALUE:
+                    buffer.append("AS VALUE ");
+                    break;
+            }
         }
 
         Top top = plainSelect.getTop();
         if (top != null) {
-            buffer.append(top).append(" ");
+            visit(top);
         }
 
         if (plainSelect.getMySqlSqlCacheFlag() != null) {
@@ -131,18 +206,12 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
             buffer.append("SQL_CALC_FOUND_ROWS").append(" ");
         }
 
-        for (Iterator<SelectItem> iter = plainSelect.getSelectItems().iterator(); iter.hasNext();) {
-            SelectItem selectItem = iter.next();
-            selectItem.accept(this);
-            if (iter.hasNext()) {
-                buffer.append(", ");
-            }
-        }
+        deparseSelectItemsClause(plainSelect.getSelectItems());
 
         if (plainSelect.getIntoTables() != null) {
             buffer.append(" INTO ");
             for (Iterator<Table> iter = plainSelect.getIntoTables().iterator(); iter.hasNext();) {
-                visit(iter.next());
+                visit(iter.next(), context);
                 if (iter.hasNext()) {
                     buffer.append(", ");
                 }
@@ -151,7 +220,23 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
 
         if (plainSelect.getFromItem() != null) {
             buffer.append(" FROM ");
-            plainSelect.getFromItem().accept(this);
+            if (plainSelect.isUsingOnly()) {
+                buffer.append("ONLY ");
+            }
+            plainSelect.getFromItem().accept(this, context);
+
+            if (plainSelect.getFromItem() instanceof Table) {
+                Table table = (Table) plainSelect.getFromItem();
+                if (table.getSampleClause() != null) {
+                    table.getSampleClause().appendTo(buffer);
+                }
+            }
+        }
+
+        if (plainSelect.getLateralViews() != null) {
+            for (LateralView lateralView : plainSelect.getLateralViews()) {
+                deparseLateralView(lateralView);
+            }
         }
 
         if (plainSelect.getJoins() != null) {
@@ -160,18 +245,23 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
             }
         }
 
+        if (plainSelect.isUsingFinal()) {
+            buffer.append(" FINAL");
+        }
+
         if (plainSelect.getKsqlWindow() != null) {
             buffer.append(" WINDOW ");
             buffer.append(plainSelect.getKsqlWindow().toString());
         }
 
-        if (plainSelect.getWhere() != null) {
-            buffer.append(" WHERE ");
-            plainSelect.getWhere().accept(expressionVisitor);
-        }
+        deparseWhereClause(plainSelect);
 
         if (plainSelect.getOracleHierarchical() != null) {
-            plainSelect.getOracleHierarchical().accept(expressionVisitor);
+            plainSelect.getOracleHierarchical().accept(expressionVisitor, context);
+        }
+
+        if (plainSelect.getPreferringClause() != null) {
+            buffer.append(" ").append(plainSelect.getPreferringClause().toString());
         }
 
         if (plainSelect.getGroupBy() != null) {
@@ -181,33 +271,44 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
 
         if (plainSelect.getHaving() != null) {
             buffer.append(" HAVING ");
-            plainSelect.getHaving().accept(expressionVisitor);
+            plainSelect.getHaving().accept(expressionVisitor, context);
+        }
+        if (plainSelect.getQualify() != null) {
+            buffer.append(" QUALIFY ");
+            plainSelect.getQualify().accept(expressionVisitor, context);
         }
         if (plainSelect.getWindowDefinitions() != null) {
             buffer.append(" WINDOW ");
-            buffer.append(plainSelect.getWindowDefinitions().stream().map(WindowDefinition::toString).collect(joining(", ")));
+            buffer.append(plainSelect.getWindowDefinitions().stream()
+                    .map(WindowDefinition::toString).collect(joining(", ")));
         }
-        if (plainSelect.getOrderByElements() != null) {
-            new OrderByDeParser(expressionVisitor, buffer).deParse(plainSelect.isOracleSiblings(),
-                    plainSelect.getOrderByElements());
+        if (plainSelect.getForClause() != null) {
+            plainSelect.getForClause().appendTo(buffer);
         }
+
+        deparseOrderByElementsClause(plainSelect, plainSelect.getOrderByElements());
         if (plainSelect.isEmitChanges()) {
             buffer.append(" EMIT CHANGES");
         }
+        if (plainSelect.getLimitBy() != null) {
+            new LimitDeparser(expressionVisitor, buffer).deParse(plainSelect.getLimitBy());
+        }
         if (plainSelect.getLimit() != null) {
-            new LimitDeparser(buffer).deParse(plainSelect.getLimit());
+            new LimitDeparser(expressionVisitor, buffer).deParse(plainSelect.getLimit());
         }
         if (plainSelect.getOffset() != null) {
-            deparseOffset(plainSelect.getOffset());
+            visit(plainSelect.getOffset());
         }
         if (plainSelect.getFetch() != null) {
-            deparseFetch(plainSelect.getFetch());
+            visit(plainSelect.getFetch());
         }
-        if (plainSelect.getWithIsolation() != null) {
-            buffer.append(plainSelect.getWithIsolation().toString());
+        if (plainSelect.getIsolation() != null) {
+            buffer.append(plainSelect.getIsolation().toString());
         }
-        if (plainSelect.isForUpdate()) {
-            buffer.append(" FOR UPDATE");
+        if (plainSelect.getForMode() != null) {
+            buffer.append(" FOR ");
+            buffer.append(plainSelect.getForMode().getValue());
+
             if (plainSelect.getForUpdateTable() != null) {
                 buffer.append(" OF ").append(plainSelect.getForUpdateTable());
             }
@@ -227,58 +328,90 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
         if (plainSelect.getForXmlPath() != null) {
             buffer.append(" FOR XML PATH(").append(plainSelect.getForXmlPath()).append(")");
         }
-        if (plainSelect.isUseBrackets()) {
-            buffer.append(")");
+        if (plainSelect.getIntoTempTable() != null) {
+            buffer.append(" INTO TEMP ").append(plainSelect.getIntoTempTable());
+        }
+        if (plainSelect.isUseWithNoLog()) {
+            buffer.append(" WITH NO LOG");
         }
 
-    }
-
-    @Override
-    public void visit(AllTableColumns allTableColumns) {
-        buffer.append(allTableColumns.getTable().getFullyQualifiedName()).append(".*");
-    }
-
-    @Override
-    public void visit(SelectExpressionItem selectExpressionItem) {
-        selectExpressionItem.getExpression().accept(expressionVisitor);
-        if (selectExpressionItem.getAlias() != null) {
-            buffer.append(selectExpressionItem.getAlias().toString());
-        }
-    }
-
-    @Override
-    public void visit(SubSelect subSelect) {
-        buffer.append(subSelect.isUseBrackets() ? "(" : "");
-        if (subSelect.getWithItemsList() != null && !subSelect.getWithItemsList().isEmpty()) {
-            buffer.append("WITH ");
-            for (Iterator<WithItem> iter = subSelect.getWithItemsList().iterator(); iter.hasNext();) {
-                WithItem withItem = iter.next();
-                withItem.accept(this);
-                if (iter.hasNext()) {
-                    buffer.append(",");
-                }
-                buffer.append(" ");
-            }
-        }
-        subSelect.getSelectBody().accept(this);
-        buffer.append(subSelect.isUseBrackets() ? ")" : "");
-        Alias alias = subSelect.getAlias();
+        Alias alias = plainSelect.getAlias();
         if (alias != null) {
             buffer.append(alias);
         }
-        Pivot pivot = subSelect.getPivot();
+        Pivot pivot = plainSelect.getPivot();
         if (pivot != null) {
-            pivot.accept(this);
+            pivot.accept(this, context);
+        }
+        UnPivot unpivot = plainSelect.getUnPivot();
+        if (unpivot != null) {
+            unpivot.accept(this, context);
         }
 
-        UnPivot unPivot = subSelect.getUnPivot();
-        if (unPivot != null) {
-            unPivot.accept(this);
+        return buffer;
+    }
+
+    protected void deparseWhereClause(PlainSelect plainSelect) {
+        if (plainSelect.getWhere() != null) {
+            buffer.append(" WHERE ");
+            plainSelect.getWhere().accept(expressionVisitor, null);
+        }
+    }
+
+    protected void deparseDistinctClause(Distinct distinct) {
+        if (distinct != null) {
+            if (distinct.isUseUnique()) {
+                buffer.append("UNIQUE ");
+            } else {
+                buffer.append("DISTINCT ");
+            }
+            if (distinct.getOnSelectItems() != null) {
+                buffer.append("ON (");
+                for (Iterator<SelectItem<?>> iter = distinct.getOnSelectItems().iterator(); iter
+                        .hasNext();) {
+                    SelectItem<?> selectItem = iter.next();
+                    selectItem.accept(this, null);
+                    if (iter.hasNext()) {
+                        buffer.append(", ");
+                    }
+                }
+                buffer.append(") ");
+            }
+        }
+    }
+
+    protected void deparseSelectItemsClause(List<SelectItem<?>> selectItems) {
+        if (selectItems != null) {
+            for (Iterator<SelectItem<?>> iter = selectItems.iterator(); iter.hasNext();) {
+                SelectItem<?> selectItem = iter.next();
+                selectItem.accept(this, null);
+                if (iter.hasNext()) {
+                    buffer.append(", ");
+                }
+            }
+        }
+    }
+
+    protected void deparseOrderByElementsClause(PlainSelect plainSelect,
+            List<OrderByElement> orderByElements) {
+        if (orderByElements != null) {
+            new OrderByDeParser(expressionVisitor, buffer).deParse(plainSelect.isOracleSiblings(),
+                    orderByElements);
         }
     }
 
     @Override
-    public void visit(Table tableName) {
+    public <S> StringBuilder visit(SelectItem<?> selectItem, S context) {
+        selectItem.getExpression().accept(expressionVisitor, context);
+        if (selectItem.getAlias() != null) {
+            buffer.append(selectItem.getAlias().toString());
+        }
+        return buffer;
+    }
+
+
+    @Override
+    public <S> StringBuilder visit(Table tableName, S context) {
         buffer.append(tableName.getFullyQualifiedName());
         Alias alias = tableName.getAlias();
         if (alias != null) {
@@ -286,11 +419,11 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
         }
         Pivot pivot = tableName.getPivot();
         if (pivot != null) {
-            pivot.accept(this);
+            pivot.accept(this, context);
         }
         UnPivot unpivot = tableName.getUnPivot();
         if (unpivot != null) {
-            unpivot.accept(this);
+            unpivot.accept(this, context);
         }
         MySQLIndexHint indexHint = tableName.getIndexHint();
         if (indexHint != null) {
@@ -300,44 +433,55 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
         if (sqlServerHints != null) {
             buffer.append(sqlServerHints);
         }
+        return buffer;
     }
 
     @Override
-    public void visit(Pivot pivot) {
-        List<Column> forColumns = pivot.getForColumns();
-        buffer.append(" PIVOT (").append(PlainSelect.getStringList(pivot.getFunctionItems())).append(" FOR ")
-                .append(PlainSelect.getStringList(forColumns, true, forColumns != null && forColumns.size() > 1))
-                .append(" IN ").append(PlainSelect.getStringList(pivot.getInItems(), true, true)).append(")");
+    public <S> StringBuilder visit(Pivot pivot, S context) {
+        // @todo: implement this as Visitor
+        buffer.append(" PIVOT (").append(PlainSelect.getStringList(pivot.getFunctionItems()));
+
+        buffer.append(" FOR ");
+        pivot.getForColumns().accept(expressionVisitor, context);
+
+        // @todo: implement this as Visitor
+        buffer.append(" IN ").append(PlainSelect.getStringList(pivot.getInItems(), true, true));
+
+        buffer.append(")");
         if (pivot.getAlias() != null) {
             buffer.append(pivot.getAlias().toString());
         }
+        return buffer;
     }
 
     @Override
-    public void visit(UnPivot unpivot) {
+    public <S> StringBuilder visit(UnPivot unpivot, S context) {
         boolean showOptions = unpivot.getIncludeNullsSpecified();
         boolean includeNulls = unpivot.getIncludeNulls();
         List<Column> unPivotClause = unpivot.getUnPivotClause();
         List<Column> unpivotForClause = unpivot.getUnPivotForClause();
-        buffer
-                .append(" UNPIVOT")
-                .append(showOptions && includeNulls ? " INCLUDE NULLS" : "")
-                .append(showOptions && !includeNulls ? " EXCLUDE NULLS" : "")
-                .append(" (").append(PlainSelect.getStringList(unPivotClause, true,
-                unPivotClause != null && unPivotClause.size() > 1))
-                .append(" FOR ").append(PlainSelect.getStringList(unpivotForClause, true,
-                unpivotForClause != null && unpivotForClause.size() > 1))
-                .append(" IN ").append(PlainSelect.getStringList(unpivot.getUnPivotInClause(), true, true)).append(")");
+        buffer.append(" UNPIVOT").append(showOptions && includeNulls ? " INCLUDE NULLS" : "")
+                .append(showOptions && !includeNulls ? " EXCLUDE NULLS" : "").append(" (")
+                .append(PlainSelect.getStringList(unPivotClause, true,
+                        unPivotClause != null && unPivotClause.size() > 1))
+                .append(" FOR ")
+                .append(PlainSelect.getStringList(unpivotForClause, true,
+                        unpivotForClause != null && unpivotForClause.size() > 1))
+                .append(" IN ")
+                .append(PlainSelect.getStringList(unpivot.getUnPivotInClause(), true, true))
+                .append(")");
         if (unpivot.getAlias() != null) {
             buffer.append(unpivot.getAlias().toString());
         }
+        return buffer;
     }
 
     @Override
-    public void visit(PivotXml pivot) {
+    public <S> StringBuilder visit(PivotXml pivot, S context) {
         List<Column> forColumns = pivot.getForColumns();
-        buffer.append(" PIVOT XML (").append(PlainSelect.getStringList(pivot.getFunctionItems())).append(" FOR ")
-                .append(PlainSelect.getStringList(forColumns, true, forColumns != null && forColumns.size() > 1))
+        buffer.append(" PIVOT XML (").append(PlainSelect.getStringList(pivot.getFunctionItems()))
+                .append(" FOR ").append(PlainSelect.getStringList(forColumns, true,
+                        forColumns != null && forColumns.size() > 1))
                 .append(" IN (");
         if (pivot.isInAny()) {
             buffer.append("ANY");
@@ -347,61 +491,47 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
             buffer.append(PlainSelect.getStringList(pivot.getInItems()));
         }
         buffer.append("))");
+        return buffer;
     }
 
-    public void deparseOffset(Offset offset) {
+    public void visit(Offset offset) {
         // OFFSET offset
         // or OFFSET offset (ROW | ROWS)
         buffer.append(" OFFSET ");
-        buffer.append(offset.getOffset());
+        offset.getOffset().accept(expressionVisitor, null);
         if (offset.getOffsetParam() != null) {
             buffer.append(" ").append(offset.getOffsetParam());
         }
 
     }
 
-    public void deparseFetch(Fetch fetch) {
-        // FETCH (FIRST | NEXT) row_count (ROW | ROWS) ONLY
+    public void visit(Fetch fetch) {
         buffer.append(" FETCH ");
         if (fetch.isFetchParamFirst()) {
             buffer.append("FIRST ");
         } else {
             buffer.append("NEXT ");
         }
-        if (fetch.getFetchJdbcParameter() != null) {
-            buffer.append(fetch.getFetchJdbcParameter().toString());
-        } else {
-            buffer.append(fetch.getRowCount());
+        if (fetch.getExpression() != null) {
+            fetch.getExpression().accept(expressionVisitor, null);
         }
-        buffer.append(" ").append(fetch.getFetchParam()).append(" ONLY");
 
+        for (String p : fetch.getFetchParameters()) {
+            buffer.append(" ").append(p);
+        }
     }
 
-    public ExpressionVisitor getExpressionVisitor() {
+    public ExpressionVisitor<StringBuilder> getExpressionVisitor() {
         return expressionVisitor;
     }
 
-    public void setExpressionVisitor(ExpressionVisitor visitor) {
+    public void setExpressionVisitor(ExpressionVisitor<StringBuilder> visitor) {
         expressionVisitor = visitor;
-    }
-
-    @Override
-    public void visit(SubJoin subjoin) {
-        buffer.append("(");
-        subjoin.getLeft().accept(this);
-        for (Join join : subjoin.getJoinList()) {
-            deparseJoin(join);
-        }
-        buffer.append(")");
-
-        if (subjoin.getPivot() != null) {
-            subjoin.getPivot().accept(this);
-        }
     }
 
     @SuppressWarnings({"PMD.CyclomaticComplexity"})
     public void deparseJoin(Join join) {
-        if ( join.isGlobal() ) {
+        if (join.isGlobal()) {
             buffer.append(" GLOBAL ");
         }
 
@@ -438,24 +568,28 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
             } else if (join.isApply()) {
                 buffer.append(" APPLY ");
             } else {
+                if (join.getJoinHint() != null) {
+                    buffer.append(" ").append(join.getJoinHint());
+                }
                 buffer.append(" JOIN ");
             }
 
         }
 
-        FromItem fromItem = join.getRightItem();
-        fromItem.accept(this);
+        FromItem fromItem = join.getFromItem();
+        fromItem.accept(this, null);
         if (join.isWindowJoin()) {
             buffer.append(" WITHIN ");
             buffer.append(join.getJoinWindow().toString());
         }
         for (Expression onExpression : join.getOnExpressions()) {
             buffer.append(" ON ");
-            onExpression.accept(expressionVisitor);
+            onExpression.accept(expressionVisitor, null);
         }
-        if (join.getUsingColumns().size() > 0) {
+        if (!join.getUsingColumns().isEmpty()) {
             buffer.append(" USING (");
-            for (Iterator<Column> iterator = join.getUsingColumns().iterator(); iterator.hasNext();) {
+            for (Iterator<Column> iterator = join.getUsingColumns().iterator(); iterator
+                    .hasNext();) {
                 Column column = iterator.next();
                 buffer.append(column.toString());
                 if (iterator.hasNext()) {
@@ -467,131 +601,217 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
 
     }
 
+    public void deparseLateralView(LateralView lateralView) {
+        buffer.append(" LATERAL VIEW");
+
+        if (lateralView.isUsingOuter()) {
+            buffer.append(" OUTER");
+        }
+
+        buffer.append(" ");
+        lateralView.getGeneratorFunction().accept(expressionVisitor, null);
+
+        if (lateralView.getTableAlias() != null) {
+            buffer.append(" ").append(lateralView.getTableAlias());
+        }
+
+        buffer.append(" ").append(lateralView.getColumnAlias());
+    }
+
     @Override
-    public void visit(SetOperationList list) {
+    public <S> StringBuilder visit(SetOperationList list, S context) {
+        List<WithItem<?>> withItemsList = list.getWithItemsList();
+        if (withItemsList != null && !withItemsList.isEmpty()) {
+            buffer.append("WITH ");
+            for (Iterator<WithItem<?>> iter = withItemsList.iterator(); iter.hasNext();) {
+                iter.next().accept((SelectVisitor<?>) this, context);
+                if (iter.hasNext()) {
+                    buffer.append(",");
+                }
+                buffer.append(" ");
+            }
+        }
+
         for (int i = 0; i < list.getSelects().size(); i++) {
             if (i != 0) {
                 buffer.append(' ').append(list.getOperations().get(i - 1)).append(' ');
             }
-            boolean brackets = list.getBrackets() == null || list.getBrackets().get(i);
-            if (brackets) {
-                buffer.append("(");
-            }
-            list.getSelects().get(i).accept(this);
-            if (brackets) {
-                buffer.append(")");
-            }
+            list.getSelects().get(i).accept((SelectVisitor<StringBuilder>) this, context);
         }
         if (list.getOrderByElements() != null) {
             new OrderByDeParser(expressionVisitor, buffer).deParse(list.getOrderByElements());
         }
 
         if (list.getLimit() != null) {
-            new LimitDeparser(buffer).deParse(list.getLimit());
+            new LimitDeparser(expressionVisitor, buffer).deParse(list.getLimit());
         }
         if (list.getOffset() != null) {
-            deparseOffset(list.getOffset());
+            visit(list.getOffset());
         }
         if (list.getFetch() != null) {
-            deparseFetch(list.getFetch());
+            visit(list.getFetch());
         }
-        if (list.getWithIsolation() != null) {
-            buffer.append(list.getWithIsolation().toString());
+        if (list.getIsolation() != null) {
+            buffer.append(list.getIsolation().toString());
         }
+
+        Alias alias = list.getAlias();
+        if (alias != null) {
+            buffer.append(alias);
+        }
+        Pivot pivot = list.getPivot();
+        if (pivot != null) {
+            pivot.accept(this, context);
+        }
+        UnPivot unpivot = list.getUnPivot();
+        if (unpivot != null) {
+            unpivot.accept(this, context);
+        }
+
+        return buffer;
     }
 
     @Override
-    public void visit(WithItem withItem) {
+    public <S> StringBuilder visit(WithItem<?> withItem, S context) {
         if (withItem.isRecursive()) {
             buffer.append("RECURSIVE ");
         }
-        buffer.append(withItem.getName());
+        buffer.append(withItem.getAlias().getName());
         if (withItem.getWithItemList() != null) {
-            buffer.append(" ").append(PlainSelect.getStringList(withItem.getWithItemList(), true, true));
+            buffer.append(" ")
+                    .append(PlainSelect.getStringList(withItem.getWithItemList(), true, true));
         }
         buffer.append(" AS ");
-
-        if (withItem.isUseValues()) {
-            ItemsList itemsList = withItem.getItemsList();
-            boolean useBracketsForValues = withItem.isUsingBracketsForValues();
-            buffer.append("(VALUES ");
-
-            ExpressionList expressionList = (ExpressionList) itemsList;
-            buffer.append(
-                    PlainSelect.getStringList(expressionList.getExpressions(), true, useBracketsForValues));
-            buffer.append(")");
-        } else {
-            SubSelect subSelect = withItem.getSubSelect();
-            if (!subSelect.isUseBrackets()) {
-                buffer.append("(");
-            }
-            subSelect.accept((FromItemVisitor) this);
-            if (!subSelect.isUseBrackets()) {
-                buffer.append(")");
-            }
+        if (withItem.isMaterialized()) {
+            buffer.append("MATERIALIZED ");
         }
+        StatementDeParser statementDeParser =
+                new StatementDeParser((ExpressionDeParser) expressionVisitor, this, buffer);
+        statementDeParser.deParse(withItem.getParenthesedStatement());
+        return buffer;
     }
 
     @Override
-    public void visit(LateralSubSelect lateralSubSelect) {
-        buffer.append(lateralSubSelect.toString());
+    public <S> StringBuilder visit(LateralSubSelect lateralSubSelect, S context) {
+        buffer.append(lateralSubSelect.getPrefix());
+        visit((ParenthesedSelect) lateralSubSelect, context);
+
+        return buffer;
     }
 
     @Override
-    public void visit(ValuesList valuesList) {
-        buffer.append("(VALUES ");
-        List<ExpressionList> expressionLists = valuesList.getMultiExpressionList().getExpressionLists();
-        int n = expressionLists.size() - 1;
-        int i = 0;
-        for (ExpressionList expressionList : expressionLists) {
-            new ExpressionListDeParser(expressionVisitor, buffer, !valuesList.isNoBrackets(), true).deParse(expressionList.getExpressions());
-            if (i<n) {
-                buffer.append(", ");
-            }
-            i++;
+    public <S> StringBuilder visit(TableStatement tableStatement, S context) {
+        new TableStatementDeParser(expressionVisitor, buffer).deParse(tableStatement);
+        return buffer;
+    }
+
+    @Override
+    public <S> StringBuilder visit(TableFunction tableFunction, S context) {
+        if (tableFunction.getPrefix() != null) {
+            buffer.append(tableFunction.getPrefix()).append(" ");
         }
-        buffer.append(")");
-        if (valuesList.getAlias() != null) {
-            buffer.append(valuesList.getAlias());
+        tableFunction.getFunction().accept(this.expressionVisitor, context);
 
-            if (valuesList.getColumnNames() != null) {
-                buffer.append("(");
-                for (Iterator<String> it = valuesList.getColumnNames().iterator(); it.hasNext();) {
-                    buffer.append(it.next());
-                    if (it.hasNext()) {
-                        buffer.append(", ");
-                    }
-                }
-                buffer.append(")");
-            }
+        if (tableFunction.getAlias() != null) {
+            buffer.append(tableFunction.getAlias());
         }
+        return buffer;
     }
 
     @Override
-    public void visit(AllColumns allColumns) {
-        buffer.append('*');
-    }
+    public <S> StringBuilder visit(ParenthesedFromItem fromItem, S context) {
 
-    @Override
-    public void visit(TableFunction tableFunction) {
-        buffer.append(tableFunction.toString());
-    }
-
-    @Override
-    public void visit(ParenthesisFromItem parenthesis) {
         buffer.append("(");
-        parenthesis.getFromItem().accept(this);
-
-        buffer.append(")");
-        if (parenthesis.getAlias() != null) {
-            buffer.append(parenthesis.getAlias().toString());
+        fromItem.getFromItem().accept(this, context);
+        List<Join> joins = fromItem.getJoins();
+        if (joins != null) {
+            for (Join join : joins) {
+                if (join.isSimple()) {
+                    buffer.append(", ").append(join);
+                } else {
+                    buffer.append(" ").append(join);
+                }
+            }
         }
+        buffer.append(")");
+
+        if (fromItem.getAlias() != null) {
+            buffer.append(fromItem.getAlias().toString());
+        }
+
+        if (fromItem.getPivot() != null) {
+            visit(fromItem.getPivot(), context);
+        }
+
+        if (fromItem.getUnPivot() != null) {
+            visit(fromItem.getUnPivot(), context);
+        }
+        return buffer;
     }
 
     @Override
-    public void visit(ValuesStatement values) {
-        new ValuesStatementDeParser(this, buffer).deParse(values);
+    public <S> StringBuilder visit(Values values, S context) {
+        new ValuesStatementDeParser(expressionVisitor, buffer).deParse(values);
+        return buffer;
     }
+
+    @Override
+    public void visit(Values values) {
+        SelectVisitor.super.visit(values);
+    }
+
+    public void visit(ParenthesedSelect select) {
+        visit(select, null);
+    }
+
+    public void visit(PlainSelect plainSelect) {
+        visit(plainSelect, null);
+    }
+
+    public void visit(SelectItem<?> selectExpressionItem) {
+        visit(selectExpressionItem, null);
+    }
+
+    public void visit(Table tableName) {
+        visit(tableName, null);
+    }
+
+    public void visit(Pivot pivot) {
+        visit(pivot, null);
+    }
+
+    public void visit(UnPivot unpivot) {
+        visit(unpivot, null);
+    }
+
+    public void visit(PivotXml pivot) {
+        visit(pivot, null);
+    }
+
+    public void visit(SetOperationList list) {
+        visit(list, null);
+    }
+
+    public void visit(WithItem<?> withItem) {
+        visit(withItem, null);
+    }
+
+    public void visit(LateralSubSelect lateralSubSelect) {
+        visit(lateralSubSelect, null);
+    }
+
+    public void visit(TableStatement tableStatement) {
+        visit(tableStatement, null);
+    }
+
+    public void visit(TableFunction tableFunction) {
+        visit(tableFunction, null);
+    }
+
+    public void visit(ParenthesedFromItem fromItem) {
+        visit(fromItem, null);
+    }
+
 
     private void deparseOptimizeFor(OptimizeFor optimizeFor) {
         buffer.append(" OPTIMIZE FOR ");
@@ -601,46 +821,7 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
 
     @Override
     void deParse(PlainSelect statement) {
-        statement.accept(this);
+        statement.accept((SelectVisitor<StringBuilder>) this, null);
     }
 
-    @Override
-    public void visit(ExpressionList expressionList) {
-        new ExpressionListDeParser(expressionVisitor, buffer, expressionList.isUsingBrackets(), true).deParse(expressionList.getExpressions());
-    }
-
-    @Override
-    public void visit(NamedExpressionList namedExpressionList) {
-        buffer.append(namedExpressionList.toString());
-
-        buffer.append("(");
-        List<Expression> expressions = namedExpressionList.getExpressions();
-        List<String> names = namedExpressionList.getNames();
-        for (int i = 0; i < expressions.size(); i++) {
-            Expression expression = expressions.get(i);
-            String name = names.get(i);
-            if (i > 0) {
-                buffer.append(" ");
-            }
-            if (!name.equals("")) {
-                buffer.append(name).append(" ");
-            }
-            expression.accept(expressionVisitor);
-        }
-        buffer.append(")");
-    }
-
-    @Override
-    public void visit(MultiExpressionList multiExprList) {
-        List<ExpressionList> expressionLists = multiExprList.getExpressionLists();
-        int n = expressionLists.size() - 1;
-        int i = 0;
-        for (ExpressionList expressionList : expressionLists) {
-            new ExpressionListDeParser(expressionVisitor, buffer, expressionList.isUsingBrackets(), true).deParse(expressionList.getExpressions());
-            if (i<n) {
-                buffer.append(", ");
-            }
-            i++;
-        }
-    }
 }

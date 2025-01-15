@@ -9,7 +9,9 @@
  */
 package net.sf.jsqlparser.statement.select;
 
-public class Wait {
+import java.io.Serializable;
+
+public class Wait implements Serializable {
 
     private long timeout;
 
@@ -23,7 +25,7 @@ public class Wait {
 
     /**
      * Returns a String containing the WAIT clause and its timeout, where TIMEOUT is specified by
-     * {@link #getTimeout()}. The returned string will null     be:<code>
+     * {@link #getTimeout()}. The returned string will null be:<code>
      * &quot; WAIT &lt;TIMEOUT&gt;&quot;
      * </code>
      */

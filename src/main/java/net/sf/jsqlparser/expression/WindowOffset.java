@@ -9,15 +9,9 @@
  */
 package net.sf.jsqlparser.expression;
 
-public class WindowOffset {
+import java.io.Serializable;
 
-    public enum Type {
-
-        PRECEDING,
-        FOLLOWING,
-        CURRENT,
-        EXPR
-    }
+public class WindowOffset implements Serializable {
 
     private Expression expression;
     private Type type;
@@ -79,6 +73,14 @@ public class WindowOffset {
 
     public <E extends Expression> E getExpression(Class<E> type) {
         return type.cast(getExpression());
+    }
+
+    public enum Type {
+        PRECEDING, FOLLOWING, CURRENT, EXPR;
+
+        public static Type from(String type) {
+            return Enum.valueOf(Type.class, type.toUpperCase());
+        }
     }
 
 }

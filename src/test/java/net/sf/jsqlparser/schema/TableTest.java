@@ -15,9 +15,14 @@ import net.sf.jsqlparser.statement.select.PlainSelect;
 import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.util.deparser.ExpressionDeParser;
 import net.sf.jsqlparser.util.deparser.SelectDeParser;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  *
@@ -27,7 +32,9 @@ public class TableTest {
 
     @Test
     public void tableIndexException() {
-        Table table = new Table().withName("bla").withDatabase(new Database(new Server("server", "instance"), "db"));
+        Table table = new Table().withName("bla")
+                .withDatabase(new Database(new Server("server", "instance"), "db"));
+        assertEquals("[server\\instance].db..bla", table.toString());
     }
 
     @Test
@@ -41,8 +48,9 @@ public class TableTest {
 
     @Test
     public void tableSetDatabaseIssue812() throws JSQLParserException {
-        String sql = "SELECT * FROM MY_TABLE1 as T1, MY_TABLE2, (SELECT * FROM MY_DB.TABLE3) LEFT OUTER JOIN MY_TABLE4 "
-                + " WHERE ID = (SELECT MAX(ID) FROM MY_TABLE5) AND ID2 IN (SELECT * FROM MY_TABLE6)";
+        String sql =
+                "SELECT * FROM MY_TABLE1 as T1, MY_TABLE2, (SELECT * FROM MY_DB.TABLE3) LEFT OUTER JOIN MY_TABLE4 "
+                        + " WHERE ID = (SELECT MAX(ID) FROM MY_TABLE5) AND ID2 IN (SELECT * FROM MY_TABLE6)";
 
         Select select = (Select) CCJSqlParserUtil.parse(sql);
         StringBuilder buffer = new StringBuilder();
@@ -51,15 +59,14 @@ public class TableTest {
         SelectDeParser deparser = new SelectDeParser(expressionDeParser, buffer) {
 
             @Override
-            public void visit(Table tableName) {
+            public <S> StringBuilder visit(Table tableName, S parameters) {
                 System.out.println(tableName);
                 tableName.setDatabase(database); // Exception
                 System.out.println(tableName.getDatabase());
+                return null;
             }
         };
-
-        deparser.visit((PlainSelect) select.getSelectBody());
-
+        deparser.visit((PlainSelect) select, null);
     }
 
     @Test
@@ -68,5 +75,41 @@ public class TableTest {
         assertThat(table.getFullyQualifiedName()).isEqualTo("link.DICTIONARY");
         table.setSchemaName(null);
         assertThat(table.getFullyQualifiedName()).isEqualTo("DICTIONARY");
+    }
+
+    @Test
+    public void testConstructorDelimitersInappropriateSize() {
+        assertThatThrownBy(
+                () -> new Table(List.of("a", "b", "c"), List.of("too", "many", "delimiters")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(
+                        "the length of the delimiters list must be 1 less than nameParts");
+    }
+
+    @Test
+    void testBigQueryFullQuotedName() throws JSQLParserException {
+        String sqlStr = "select * from `d.s.t`";
+        PlainSelect select = (PlainSelect) CCJSqlParserUtil.parse(sqlStr);
+        Table table = (Table) select.getFromItem();
+
+        assertEquals("\"d\"", table.getCatalogName());
+        assertEquals("\"s\"", table.getSchemaName());
+        assertEquals("\"t\"", table.getName());
+
+        assertEquals("d", table.getUnquotedDatabaseName());
+        assertEquals("s", table.getUnquotedSchemaName());
+        assertEquals("t", table.getUnquotedName());
+
+        sqlStr = "select * from `s.t`";
+        select = (PlainSelect) CCJSqlParserUtil.parse(sqlStr);
+        table = (Table) select.getFromItem();
+
+        assertNull(table.getCatalogName());
+        assertEquals("\"s\"", table.getSchemaName());
+        assertEquals("\"t\"", table.getName());
+
+        assertNull(table.getUnquotedDatabaseName());
+        assertEquals("s", table.getUnquotedSchemaName());
+        assertEquals("t", table.getUnquotedName());
     }
 }

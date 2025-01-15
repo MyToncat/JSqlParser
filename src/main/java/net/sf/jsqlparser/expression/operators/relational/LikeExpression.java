@@ -14,10 +14,10 @@ import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
 
 public class LikeExpression extends BinaryExpression {
-
     private boolean not = false;
+    private boolean useBinary = false;
     private Expression escapeExpression = null;
-    private boolean caseInsensitive = false;
+    private KeyWord likeKeyWord = KeyWord.LIKE;
 
     public boolean isNot() {
         return not;
@@ -27,23 +27,34 @@ public class LikeExpression extends BinaryExpression {
         not = b;
     }
 
-    @Override
-    public void accept(ExpressionVisitor expressionVisitor) {
-        expressionVisitor.visit(this);
+    public boolean isUseBinary() {
+        return useBinary;
+    }
+
+    public LikeExpression setUseBinary(boolean useBinary) {
+        this.useBinary = useBinary;
+        return this;
     }
 
     @Override
+    public <T, S> T accept(ExpressionVisitor<T> expressionVisitor, S context) {
+        return expressionVisitor.visit(this, context);
+    }
+
+    @Deprecated
+    @Override
     public String getStringExpression() {
-        return caseInsensitive ? "ILIKE" : "LIKE";
+        return likeKeyWord.toString();
     }
 
     @Override
     public String toString() {
-        String retval = getLeftExpression() + " " + (not ? "NOT " : "") + getStringExpression() + " " + getRightExpression();
+        String retval = getLeftExpression() + " " + (not ? "NOT " : "")
+                + (likeKeyWord == KeyWord.SIMILAR_TO ? "SIMILAR TO" : likeKeyWord) + " "
+                + (useBinary ? "BINARY " : "") + getRightExpression();
         if (escapeExpression != null) {
-            retval += " ESCAPE "  + escapeExpression ;
+            retval += " ESCAPE " + escapeExpression;
         }
-
         return retval;
     }
 
@@ -55,12 +66,28 @@ public class LikeExpression extends BinaryExpression {
         this.escapeExpression = escapeExpression;
     }
 
+    @Deprecated
     public boolean isCaseInsensitive() {
-        return caseInsensitive;
+        return likeKeyWord == KeyWord.ILIKE;
     }
 
+    @Deprecated
     public void setCaseInsensitive(boolean caseInsensitive) {
-        this.caseInsensitive = caseInsensitive;
+        this.likeKeyWord = KeyWord.ILIKE;
+    }
+
+    public KeyWord getLikeKeyWord() {
+        return likeKeyWord;
+    }
+
+    public LikeExpression setLikeKeyWord(KeyWord likeKeyWord) {
+        this.likeKeyWord = likeKeyWord;
+        return this;
+    }
+
+    public LikeExpression setLikeKeyWord(String likeKeyWord) {
+        this.likeKeyWord = KeyWord.from(likeKeyWord);
+        return this;
     }
 
     public LikeExpression withEscape(Expression escape) {
@@ -68,6 +95,7 @@ public class LikeExpression extends BinaryExpression {
         return this;
     }
 
+    @Deprecated
     public LikeExpression withCaseInsensitive(boolean caseInsensitive) {
         this.setCaseInsensitive(caseInsensitive);
         return this;
@@ -86,5 +114,13 @@ public class LikeExpression extends BinaryExpression {
     @Override
     public LikeExpression withRightExpression(Expression arg0) {
         return (LikeExpression) super.withRightExpression(arg0);
+    }
+
+    public enum KeyWord {
+        LIKE, ILIKE, RLIKE, REGEXP_LIKE, REGEXP, SIMILAR_TO, MATCH_ANY, MATCH_ALL, MATCH_PHRASE, MATCH_PHRASE_PREFIX, MATCH_REGEXP;
+
+        public static KeyWord from(String keyword) {
+            return Enum.valueOf(KeyWord.class, keyword.toUpperCase().replaceAll("\\s+", "_"));
+        }
     }
 }

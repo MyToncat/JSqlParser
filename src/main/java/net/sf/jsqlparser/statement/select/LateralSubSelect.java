@@ -13,37 +13,68 @@ import net.sf.jsqlparser.expression.Alias;
 
 /**
  * lateral sub select
+ *
  * @author tobens
  */
-public class LateralSubSelect extends SpecialSubSelect {
-    
+public class LateralSubSelect extends ParenthesedSelect {
+    private String prefix;
+
     public LateralSubSelect() {
-        super("LATERAL");
-    }
-    
-    @Override
-    public void accept(FromItemVisitor fromItemVisitor) {
-        fromItemVisitor.visit(this);
+        this("LATERAL");
     }
 
-    @Override
-    public LateralSubSelect withPivot(Pivot pivot) {
-        return (LateralSubSelect) super.withPivot(pivot);
+    public LateralSubSelect(String prefix) {
+        this(prefix, null, null);
     }
 
-    @Override
+    public LateralSubSelect(String prefix, Select select) {
+        this(prefix, select, null);
+    }
+
+    public LateralSubSelect(Select select, Alias alias) {
+        this("LATERAL", select, alias);
+    }
+
+    public LateralSubSelect(String prefix, Select select, Alias alias) {
+        this.prefix = prefix;
+        this.select = select;
+        this.alias = alias;
+    }
+
+    public String getPrefix() {
+        return prefix;
+    }
+
+    public void setPrefix(String prefix) {
+        this.prefix = prefix;
+    }
+
+    public LateralSubSelect withPrefix(String prefix) {
+        this.setPrefix(prefix);
+        return this;
+    }
+
+    public LateralSubSelect withSelect(Select select) {
+        setSelect(select);
+        return this;
+    }
+
     public LateralSubSelect withAlias(Alias alias) {
-        return (LateralSubSelect) super.withAlias(alias);
+        setAlias(alias);
+        return this;
+    }
+
+    public String toString() {
+        return prefix + super.toString();
     }
 
     @Override
-    public LateralSubSelect withSubSelect(SubSelect subSelect) {
-        return (LateralSubSelect) super.withSubSelect(subSelect);
+    public <T, S> T accept(SelectVisitor<T> selectVisitor, S context) {
+        return selectVisitor.visit(this, context);
     }
 
     @Override
-    public LateralSubSelect withUnPivot(UnPivot unpivot) {
-        return (LateralSubSelect) super.withUnPivot(unpivot);
+    public <T, S> T accept(FromItemVisitor<T> fromItemVisitor, S context) {
+        return fromItemVisitor.visit(this, context);
     }
-
 }

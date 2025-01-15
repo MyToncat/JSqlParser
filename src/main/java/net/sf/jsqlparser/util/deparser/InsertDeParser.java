@@ -9,63 +9,74 @@
  */
 package net.sf.jsqlparser.util.deparser;
 
-import java.util.Iterator;
-import java.util.List;
-
-import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
-import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
-import net.sf.jsqlparser.expression.operators.relational.ItemsListVisitor;
-import net.sf.jsqlparser.expression.operators.relational.MultiExpressionList;
-import net.sf.jsqlparser.expression.operators.relational.NamedExpressionList;
 import net.sf.jsqlparser.schema.Column;
+import net.sf.jsqlparser.schema.Partition;
 import net.sf.jsqlparser.statement.insert.Insert;
-import net.sf.jsqlparser.statement.select.PlainSelect;
-import net.sf.jsqlparser.statement.select.SelectBody;
+import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.statement.select.SelectVisitor;
-import net.sf.jsqlparser.statement.select.SubSelect;
 import net.sf.jsqlparser.statement.select.WithItem;
 
-public class InsertDeParser extends AbstractDeParser<Insert> implements ItemsListVisitor {
+import java.util.Iterator;
 
-    private ExpressionVisitor expressionVisitor;
-    private SelectVisitor selectVisitor;
+public class InsertDeParser extends AbstractDeParser<Insert> {
+
+    private ExpressionVisitor<StringBuilder> expressionVisitor;
+    private SelectVisitor<StringBuilder> selectVisitor;
 
     public InsertDeParser() {
         super(new StringBuilder());
     }
 
-    public InsertDeParser(ExpressionVisitor expressionVisitor, SelectVisitor selectVisitor, StringBuilder buffer) {
+    public InsertDeParser(ExpressionVisitor<StringBuilder> expressionVisitor,
+            SelectVisitor<StringBuilder> selectVisitor,
+            StringBuilder buffer) {
         super(buffer);
         this.expressionVisitor = expressionVisitor;
         this.selectVisitor = selectVisitor;
     }
 
     @Override
-    @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.ExcessiveMethodLength", "PMD.NPathComplexity"})
+    @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.ExcessiveMethodLength",
+            "PMD.NPathComplexity"})
     public void deParse(Insert insert) {
         if (insert.getWithItemsList() != null && !insert.getWithItemsList().isEmpty()) {
             buffer.append("WITH ");
-            for (Iterator<WithItem> iter = insert.getWithItemsList().iterator(); iter.hasNext();) {
-                WithItem withItem = iter.next();
-                withItem.accept(this.selectVisitor);
+            for (Iterator<WithItem<?>> iter = insert.getWithItemsList().iterator(); iter
+                    .hasNext();) {
+                WithItem<?> withItem = iter.next();
+                withItem.accept(this.selectVisitor, null);
                 if (iter.hasNext()) {
                     buffer.append(",");
                 }
                 buffer.append(" ");
             }
         }
-        
+
         buffer.append("INSERT ");
         if (insert.getModifierPriority() != null) {
             buffer.append(insert.getModifierPriority()).append(" ");
         }
+        if (insert.getOracleHint() != null) {
+            buffer.append(insert.getOracleHint()).append(" ");
+        }
         if (insert.isModifierIgnore()) {
             buffer.append("IGNORE ");
         }
-        buffer.append("INTO ");
+        if (insert.isOverwrite()) {
+            buffer.append("OVERWRITE ");
+        } else {
+            buffer.append("INTO ");
+        }
+        if (insert.isTableKeyword()) {
+            buffer.append("TABLE ");
+        }
 
         buffer.append(insert.getTable().toString());
+
+        if (insert.isOnlyDefaultValues()) {
+            buffer.append(" DEFAULT VALUES");
+        }
 
         if (insert.getColumns() != null) {
             buffer.append(" (");
@@ -78,120 +89,65 @@ public class InsertDeParser extends AbstractDeParser<Insert> implements ItemsLis
             }
             buffer.append(")");
         }
-        
+
+        if (insert.isOverriding()) {
+            buffer.append("OVERRIDING SYSTEM VALUE ");
+        }
+
+        if (insert.getPartitions() != null) {
+            buffer.append(" PARTITION (");
+            Partition.appendPartitionsTo(buffer, insert.getPartitions());
+            buffer.append(")");
+        }
+
         if (insert.getOutputClause() != null) {
             buffer.append(insert.getOutputClause().toString());
         }
 
         if (insert.getSelect() != null) {
             buffer.append(" ");
-            if (insert.getSelect().isUsingWithBrackets()) {
-                buffer.append("(");
-            }
-            if (insert.getSelect().getWithItemsList() != null) {
-                buffer.append("WITH ");
-                for (WithItem with : insert.getSelect().getWithItemsList()) {
-                    with.accept(selectVisitor);
-                }
-                buffer.append(" ");
-            }
-            SelectBody selectBody = insert.getSelect().getSelectBody();
-            selectBody.accept(selectVisitor);
-            if (insert.getSelect().isUsingWithBrackets()) {
-                buffer.append(")");
-            }
+            Select select = insert.getSelect();
+            select.accept(selectVisitor, null);
         }
 
-        if (insert.isUseSet()) {
+        if (insert.getSetUpdateSets() != null) {
             buffer.append(" SET ");
-            for (int i = 0; i < insert.getSetColumns().size(); i++) {
-                Column column = insert.getSetColumns().get(i);
-                column.accept(expressionVisitor);
-
-                buffer.append(" = ");
-
-                Expression expression = insert.getSetExpressionList().get(i);
-                expression.accept(expressionVisitor);
-                if (i < insert.getSetColumns().size() - 1) {
-                    buffer.append(", ");
-                }
-            }
+            deparseUpdateSets(insert.getSetUpdateSets(), buffer, expressionVisitor);
         }
 
-        if (insert.isUseDuplicate()) {
+        if (insert.getDuplicateUpdateSets() != null) {
             buffer.append(" ON DUPLICATE KEY UPDATE ");
-            for (int i = 0; i < insert.getDuplicateUpdateColumns().size(); i++) {
-                Column column = insert.getDuplicateUpdateColumns().get(i);
-                buffer.append(column.getFullyQualifiedName()).append(" = ");
-
-                Expression expression = insert.getDuplicateUpdateExpressionList().get(i);
-                expression.accept(expressionVisitor);
-                if (i < insert.getDuplicateUpdateColumns().size() - 1) {
-                    buffer.append(", ");
-                }
-            }
+            deparseUpdateSets(insert.getDuplicateUpdateSets(), buffer, expressionVisitor);
         }
 
-        //@todo: Accept some Visitors for the involved Expressions
-        if (insert.getConflictAction()!=null) {
+        // @todo: Accept some Visitors for the involved Expressions
+        if (insert.getConflictAction() != null) {
             buffer.append(" ON CONFLICT");
 
-            if (insert.getConflictTarget()!=null) {
+            if (insert.getConflictTarget() != null) {
                 insert.getConflictTarget().appendTo(buffer);
             }
             insert.getConflictAction().appendTo(buffer);
         }
 
-        if (insert.getReturningExpressionList() != null) {
-            buffer.append(" RETURNING ").append(PlainSelect.
-                    getStringList(insert.getReturningExpressionList(), true, false));
+        if (insert.getReturningClause() != null) {
+            insert.getReturningClause().appendTo(buffer);
         }
     }
 
-    @Override
-    public void visit(ExpressionList expressionList) {
-        new ExpressionListDeParser(expressionVisitor, buffer, expressionList.isUsingBrackets(), true).deParse(expressionList.getExpressions());
-    }
-
-    @Override
-    public void visit(NamedExpressionList NamedExpressionList) {
-        // not used in a top-level insert statement
-    }
-
-    @Override
-    public void visit(MultiExpressionList multiExprList) {
-        List<ExpressionList> expressionLists = multiExprList.getExpressionLists();
-        int n = expressionLists.size() - 1;
-        int i = 0;
-        for (ExpressionList expressionList : expressionLists) {
-            new ExpressionListDeParser(expressionVisitor, buffer, expressionList.isUsingBrackets(), true).deParse(expressionList.getExpressions());
-            if (i<n) {
-                buffer.append(", ");
-            }
-            i++;
-        }
-    }
-
-    @Override
-    public void visit(SubSelect subSelect) {
-        subSelect.getSelectBody().accept(selectVisitor);
-    }
-
-    public ExpressionVisitor getExpressionVisitor() {
+    public ExpressionVisitor<StringBuilder> getExpressionVisitor() {
         return expressionVisitor;
     }
 
-    public SelectVisitor getSelectVisitor() {
-        return selectVisitor;
-    }
-
-    public void setExpressionVisitor(ExpressionVisitor visitor) {
+    public void setExpressionVisitor(ExpressionVisitor<StringBuilder> visitor) {
         expressionVisitor = visitor;
     }
 
-    public void setSelectVisitor(SelectVisitor visitor) {
+    public SelectVisitor<StringBuilder> getSelectVisitor() {
+        return selectVisitor;
+    }
+
+    public void setSelectVisitor(SelectVisitor<StringBuilder> visitor) {
         selectVisitor = visitor;
     }
-    
-    
 }

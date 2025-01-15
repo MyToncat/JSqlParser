@@ -9,10 +9,23 @@
  */
 package net.sf.jsqlparser.util;
 
-import java.util.*;
-import net.sf.jsqlparser.expression.*;
-import net.sf.jsqlparser.statement.select.*;
-import net.sf.jsqlparser.statement.values.ValuesStatement;
+import java.util.LinkedList;
+import java.util.List;
+
+import net.sf.jsqlparser.expression.Alias;
+import net.sf.jsqlparser.expression.BinaryExpression;
+import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.statement.select.LateralSubSelect;
+import net.sf.jsqlparser.statement.select.ParenthesedSelect;
+import net.sf.jsqlparser.statement.select.PlainSelect;
+import net.sf.jsqlparser.statement.select.Select;
+import net.sf.jsqlparser.statement.select.SelectItem;
+import net.sf.jsqlparser.statement.select.SelectItemVisitor;
+import net.sf.jsqlparser.statement.select.SelectVisitor;
+import net.sf.jsqlparser.statement.select.SetOperationList;
+import net.sf.jsqlparser.statement.select.TableStatement;
+import net.sf.jsqlparser.statement.select.Values;
+import net.sf.jsqlparser.statement.select.WithItem;
 
 /**
  * Connect all selected expressions with a binary expression. Out of select a,b from table one gets
@@ -22,13 +35,14 @@ import net.sf.jsqlparser.statement.values.ValuesStatement;
  * @author tw
  */
 @SuppressWarnings({"PMD.UncommentedEmptyMethodBody"})
-public abstract class ConnectExpressionsVisitor implements SelectVisitor, SelectItemVisitor {
+public abstract class ConnectExpressionsVisitor<T>
+        implements SelectVisitor<T>, SelectItemVisitor<T> {
 
+    private final List<SelectItem<? extends Expression>> itemsExpr =
+            new LinkedList<SelectItem<? extends Expression>>();
     private String alias = "expr";
-    private final List<SelectExpressionItem> itemsExpr = new LinkedList<SelectExpressionItem>();
 
-    public ConnectExpressionsVisitor() {
-    }
+    public ConnectExpressionsVisitor() {}
 
     public ConnectExpressionsVisitor(String alias) {
         this.alias = alias;
@@ -37,9 +51,21 @@ public abstract class ConnectExpressionsVisitor implements SelectVisitor, Select
     protected abstract BinaryExpression createBinaryExpression();
 
     @Override
-    public void visit(PlainSelect plainSelect) {
-        for (SelectItem item : plainSelect.getSelectItems()) {
-            item.accept(this);
+    public <S> T visit(ParenthesedSelect parenthesedSelect, S context) {
+        parenthesedSelect.getSelect().accept(this, context);
+        return null;
+    }
+
+    @Override
+    public <S> T visit(LateralSubSelect lateralSubSelect, S context) {
+        lateralSubSelect.getSelect().accept(this, context);
+        return null;
+    }
+
+    @Override
+    public <S> T visit(PlainSelect plainSelect, S context) {
+        for (SelectItem<?> item : plainSelect.getSelectItems()) {
+            item.accept(this, context);
         }
 
         if (itemsExpr.size() > 1) {
@@ -53,45 +79,43 @@ public abstract class ConnectExpressionsVisitor implements SelectVisitor, Select
             }
             binExpr.setRightExpression(itemsExpr.get(itemsExpr.size() - 1).getExpression());
 
-            SelectExpressionItem sei = new SelectExpressionItem();
+            SelectItem<Expression> sei = new SelectItem<>();
             sei.setExpression(binExpr);
 
             plainSelect.getSelectItems().clear();
             plainSelect.getSelectItems().add(sei);
         }
 
-        ((SelectExpressionItem) plainSelect.getSelectItems().get(0)).setAlias(new Alias(alias));
+        plainSelect.getSelectItems().get(0).setAlias(new Alias(alias));
+        return null;
     }
 
     @Override
-    public void visit(SetOperationList setOpList) {
-        for (SelectBody select : setOpList.getSelects()) {
-            select.accept(this);
+    public <S> T visit(SetOperationList setOpList, S context) {
+        for (Select select : setOpList.getSelects()) {
+            select.accept(this, context);
         }
+        return null;
     }
 
     @Override
-    public void visit(WithItem withItem) {
+    public <S> T visit(WithItem<?> withItem, S context) {
+        return null;
     }
 
     @Override
-    public void visit(AllTableColumns allTableColumns) {
+    public <S> T visit(SelectItem<? extends Expression> selectItem, S context) {
+        itemsExpr.add(selectItem);
+        return null;
+    }
+
+    @Override
+    public <S> T visit(Values aThis, S context) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
 
     @Override
-    public void visit(AllColumns allColumns) {
+    public <S> T visit(TableStatement tableStatement, S context) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
-
-    @Override
-    public void visit(SelectExpressionItem selectExpressionItem) {
-        itemsExpr.add(selectExpressionItem);
-    }
-
-    @Override
-    public void visit(ValuesStatement aThis) {
-        throw new UnsupportedOperationException("Not supported yet.");
-    }
-
 }

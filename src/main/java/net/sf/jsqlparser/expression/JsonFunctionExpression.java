@@ -10,14 +10,14 @@
 
 package net.sf.jsqlparser.expression;
 
+import java.io.Serializable;
 import java.util.Objects;
 
 /**
- *
  * @author <a href="mailto:andreas@manticore-projects.com">Andreas Reichel</a>
  */
 
-public class JsonFunctionExpression {
+public class JsonFunctionExpression implements Serializable {
     private final Expression expression;
 
     private boolean usingFormatJson = false;
@@ -25,6 +25,7 @@ public class JsonFunctionExpression {
     public JsonFunctionExpression(Expression expression) {
         this.expression = Objects.requireNonNull(expression, "The EXPRESSION must not be null");
     }
+
     public Expression getExpression() {
         return expression;
     }
@@ -36,12 +37,12 @@ public class JsonFunctionExpression {
     public void setUsingFormatJson(boolean usingFormatJson) {
         this.usingFormatJson = usingFormatJson;
     }
-    
+
     public JsonFunctionExpression withUsingFormatJson(boolean usingFormatJson) {
         this.setUsingFormatJson(usingFormatJson);
         return this;
     }
-    
+
     public StringBuilder append(StringBuilder builder) {
         return builder.append(getExpression()).append(isUsingFormatJson() ? " FORMAT JSON" : "");
     }

@@ -33,8 +33,8 @@ public class DateTimeLiteralExpression extends ASTNodeAccessImpl implements Expr
     }
 
     @Override
-    public void accept(ExpressionVisitor expressionVisitor) {
-        expressionVisitor.visit(this);
+    public <T, S> T accept(ExpressionVisitor<T> expressionVisitor, S context) {
+        return expressionVisitor.visit(this, context);
     }
 
     @Override
@@ -53,6 +53,10 @@ public class DateTimeLiteralExpression extends ASTNodeAccessImpl implements Expr
     }
 
     public enum DateTime {
-        DATE, TIME, TIMESTAMP, TIMESTAMPTZ;
+        DATE, DATETIME, TIME, TIMESTAMP, TIMESTAMPTZ;
+
+        public static DateTime from(String dateTimeStr) {
+            return Enum.valueOf(DateTime.class, dateTimeStr.toUpperCase());
+        }
     }
 }

@@ -13,29 +13,20 @@ import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
 import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 
-public class InExpression extends ASTNodeAccessImpl implements Expression, SupportsOldOracleJoinSyntax {
+public class InExpression extends ASTNodeAccessImpl
+        implements Expression, SupportsOldOracleJoinSyntax {
 
     private Expression leftExpression;
-    private ItemsList rightItemsList;
+    private boolean global = false;
     private boolean not = false;
     private Expression rightExpression;
     private int oldOracleJoinSyntax = NO_ORACLE_JOIN;
 
-    public InExpression() {
-    }
+    public InExpression() {}
 
-    public InExpression(Expression leftExpression, ItemsList itemsList) {
-        setLeftExpression(leftExpression);
-        setRightItemsList(itemsList);
-    }
-
-    @Override
-    public void setOldOracleJoinSyntax(int oldOracleJoinSyntax) {
-        this.oldOracleJoinSyntax = oldOracleJoinSyntax;
-        if (oldOracleJoinSyntax < 0 || oldOracleJoinSyntax > 1) {
-            throw new IllegalArgumentException(
-                    "unexpected join type for oracle found with IN (type=" + oldOracleJoinSyntax + ")");
-        }
+    public InExpression(Expression leftExpression, Expression rightExpression) {
+        this.leftExpression = leftExpression;
+        this.rightExpression = rightExpression;
     }
 
     @Override
@@ -43,21 +34,22 @@ public class InExpression extends ASTNodeAccessImpl implements Expression, Suppo
         return oldOracleJoinSyntax;
     }
 
-    public ItemsList getRightItemsList() {
-        return rightItemsList;
+    @Override
+    public void setOldOracleJoinSyntax(int oldOracleJoinSyntax) {
+        this.oldOracleJoinSyntax = oldOracleJoinSyntax;
+        if (oldOracleJoinSyntax < 0 || oldOracleJoinSyntax > 1) {
+            throw new IllegalArgumentException(
+                    "unexpected join type for oracle found with IN (type=" + oldOracleJoinSyntax
+                            + ")");
+        }
     }
 
     public Expression getLeftExpression() {
         return leftExpression;
     }
 
-    public InExpression withRightItemsList(ItemsList list) {
-        this.setRightItemsList(list);
-        return this;
-    }
-
-    public final void setRightItemsList(ItemsList list) {
-        rightItemsList = list;
+    public final void setLeftExpression(Expression expression) {
+        leftExpression = expression;
     }
 
     public InExpression withLeftExpression(Expression expression) {
@@ -65,8 +57,13 @@ public class InExpression extends ASTNodeAccessImpl implements Expression, Suppo
         return this;
     }
 
-    public final void setLeftExpression(Expression expression) {
-        leftExpression = expression;
+    public boolean isGlobal() {
+        return global;
+    }
+
+    public InExpression setGlobal(boolean b) {
+        global = b;
+        return this;
     }
 
     public boolean isNot() {
@@ -86,8 +83,8 @@ public class InExpression extends ASTNodeAccessImpl implements Expression, Suppo
     }
 
     @Override
-    public void accept(ExpressionVisitor expressionVisitor) {
-        expressionVisitor.visit(this);
+    public <T, S> T accept(ExpressionVisitor<T> expressionVisitor, S context) {
+        return expressionVisitor.visit(this, context);
     }
 
     private String getLeftExpressionString() {
@@ -100,15 +97,14 @@ public class InExpression extends ASTNodeAccessImpl implements Expression, Suppo
         statementBuilder.append(getLeftExpressionString());
 
         statementBuilder.append(" ");
+        if (global) {
+            statementBuilder.append("GLOBAL ");
+        }
         if (not) {
             statementBuilder.append("NOT ");
         }
         statementBuilder.append("IN ");
-        if (rightExpression == null) {
-            statementBuilder.append(rightItemsList);
-        } else {
-            statementBuilder.append(rightExpression);
-        }
+        statementBuilder.append(rightExpression);
         return statementBuilder.toString();
     }
 
@@ -141,13 +137,14 @@ public class InExpression extends ASTNodeAccessImpl implements Expression, Suppo
         return this;
     }
 
-    public InExpression withNot(boolean not) {
-        this.setNot(not);
+    public InExpression withGlobal(boolean global) {
+        this.setGlobal(global);
         return this;
     }
 
-    public <E extends ItemsList> E getRightItemsList(Class<E> type) {
-        return type.cast(getRightItemsList());
+    public InExpression withNot(boolean not) {
+        this.setNot(not);
+        return this;
     }
 
     public <E extends Expression> E getLeftExpression(Class<E> type) {

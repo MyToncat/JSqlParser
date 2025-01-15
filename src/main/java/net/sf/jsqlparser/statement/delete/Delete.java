@@ -9,6 +9,20 @@
  */
 package net.sf.jsqlparser.statement.delete;
 
+import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.expression.OracleHint;
+import net.sf.jsqlparser.expression.PreferringClause;
+import net.sf.jsqlparser.schema.Table;
+import net.sf.jsqlparser.statement.OutputClause;
+import net.sf.jsqlparser.statement.ReturningClause;
+import net.sf.jsqlparser.statement.Statement;
+import net.sf.jsqlparser.statement.StatementVisitor;
+import net.sf.jsqlparser.statement.select.Join;
+import net.sf.jsqlparser.statement.select.Limit;
+import net.sf.jsqlparser.statement.select.OrderByElement;
+import net.sf.jsqlparser.statement.select.PlainSelect;
+import net.sf.jsqlparser.statement.select.WithItem;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -17,35 +31,25 @@ import java.util.List;
 import java.util.Optional;
 
 import static java.util.stream.Collectors.joining;
-import net.sf.jsqlparser.expression.Expression;
-import net.sf.jsqlparser.expression.OracleHint;
-import net.sf.jsqlparser.schema.Table;
-import net.sf.jsqlparser.statement.OutputClause;
-import net.sf.jsqlparser.statement.Statement;
-import net.sf.jsqlparser.statement.StatementVisitor;
-import net.sf.jsqlparser.statement.select.Join;
-import net.sf.jsqlparser.statement.select.Limit;
-import net.sf.jsqlparser.statement.select.OrderByElement;
-import net.sf.jsqlparser.statement.select.PlainSelect;
-import net.sf.jsqlparser.statement.select.SelectItem;
-import net.sf.jsqlparser.statement.select.WithItem;
 
 public class Delete implements Statement {
 
-    private List<WithItem> withItemsList;
+    private List<WithItem<?>> withItemsList;
     private Table table;
     private OracleHint oracleHint = null;
     private List<Table> tables;
     private List<Table> usingList;
     private List<Join> joins;
     private Expression where;
+    private PreferringClause preferringClause;
     private Limit limit;
     private List<OrderByElement> orderByElements;
     private boolean hasFrom = true;
     private DeleteModifierPriority modifierPriority;
     private boolean modifierIgnore;
     private boolean modifierQuick;
-    private List<SelectItem> returningExpressionList = null;
+
+    private ReturningClause returningClause;
     private OutputClause outputClause;
 
     public OutputClause getOutputClause() {
@@ -56,40 +60,38 @@ public class Delete implements Statement {
         this.outputClause = outputClause;
     }
 
-    public List<SelectItem> getReturningExpressionList() {
-        return returningExpressionList;
+    public ReturningClause getReturningClause() {
+        return returningClause;
     }
 
-    public void setReturningExpressionList(List<SelectItem> returningExpressionList) {
-        this.returningExpressionList = returningExpressionList;
-    }
-
-    public Delete withReturningExpressionList(List<SelectItem> returningExpressionList) {
-        this.returningExpressionList = returningExpressionList;
+    public Delete setReturningClause(ReturningClause returningClause) {
+        this.returningClause = returningClause;
         return this;
     }
 
-    public List<WithItem> getWithItemsList() {
+    public List<WithItem<?>> getWithItemsList() {
         return withItemsList;
     }
 
-    public void setWithItemsList(List<WithItem> withItemsList) {
+    public void setWithItemsList(List<WithItem<?>> withItemsList) {
         this.withItemsList = withItemsList;
     }
 
-    public Delete withWithItemsList(List<WithItem> withItemsList) {
+    public Delete withWithItemsList(List<WithItem<?>> withItemsList) {
         this.setWithItemsList(withItemsList);
         return this;
     }
-    
-     public Delete addWithItemsList(WithItem... withItemsList) {
-        List<WithItem> collection = Optional.ofNullable(getWithItemsList()).orElseGet(ArrayList::new);
+
+    public Delete addWithItemsList(WithItem<?>... withItemsList) {
+        List<WithItem<?>> collection =
+                Optional.ofNullable(getWithItemsList()).orElseGet(ArrayList::new);
         Collections.addAll(collection, withItemsList);
         return this.withWithItemsList(collection);
     }
 
-    public Delete addWithItemsList(Collection<? extends WithItem> withItemsList) {
-        List<WithItem> collection = Optional.ofNullable(getWithItemsList()).orElseGet(ArrayList::new);
+    public Delete addWithItemsList(Collection<? extends WithItem<?>> withItemsList) {
+        List<WithItem<?>> collection =
+                Optional.ofNullable(getWithItemsList()).orElseGet(ArrayList::new);
         collection.addAll(withItemsList);
         return this.withWithItemsList(collection);
     }
@@ -103,26 +105,34 @@ public class Delete implements Statement {
     }
 
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
     }
 
     public Table getTable() {
         return table;
     }
 
-    public Expression getWhere() {
-        return where;
-    }
-
     public void setTable(Table name) {
         table = name;
+    }
+
+    public Expression getWhere() {
+        return where;
     }
 
     public void setWhere(Expression expression) {
         where = expression;
     }
-    
+
+    public PreferringClause getPreferringClause() {
+        return preferringClause;
+    }
+
+    public void setPreferringClause(PreferringClause preferringClause) {
+        this.preferringClause = preferringClause;
+    }
+
     public OracleHint getOracleHint() {
         return oracleHint;
     }
@@ -177,8 +187,8 @@ public class Delete implements Statement {
         StringBuilder b = new StringBuilder();
         if (withItemsList != null && !withItemsList.isEmpty()) {
             b.append("WITH ");
-            for (Iterator<WithItem> iter = withItemsList.iterator(); iter.hasNext();) {
-                WithItem withItem = iter.next();
+            for (Iterator<WithItem<?>> iter = withItemsList.iterator(); iter.hasNext();) {
+                WithItem<?> withItem = iter.next();
                 b.append(withItem);
                 if (iter.hasNext()) {
                     b.append(",");
@@ -186,9 +196,11 @@ public class Delete implements Statement {
                 b.append(" ");
             }
         }
-        
-        b.append("DELETE");
 
+        b.append("DELETE");
+        if (oracleHint != null) {
+            b.append(oracleHint).append(" ");
+        }
         if (modifierPriority != null) {
             b.append(" ").append(modifierPriority.name());
         }
@@ -206,7 +218,7 @@ public class Delete implements Statement {
                     .collect(joining(", ")));
         }
 
-        if (outputClause!=null) {
+        if (outputClause != null) {
             outputClause.appendTo(b);
         }
 
@@ -216,7 +228,7 @@ public class Delete implements Statement {
         }
         b.append(" ").append(table);
 
-        if (usingList != null && usingList.size()>0) {
+        if (usingList != null && usingList.size() > 0) {
             b.append(" USING ");
             b.append(usingList.stream()
                     .map(Table::toString)
@@ -237,6 +249,10 @@ public class Delete implements Statement {
             b.append(" WHERE ").append(where);
         }
 
+        if (preferringClause != null) {
+            b.append(" ").append(preferringClause);
+        }
+
         if (orderByElements != null) {
             b.append(PlainSelect.orderByToString(orderByElements));
         }
@@ -245,9 +261,8 @@ public class Delete implements Statement {
             b.append(limit);
         }
 
-        if (getReturningExpressionList() != null) {
-            b.append(" RETURNING ").append(PlainSelect.
-                    getStringList(getReturningExpressionList(), true, false));
+        if (returningClause != null) {
+            returningClause.appendTo(b);
         }
 
         return b.toString();
@@ -288,48 +303,53 @@ public class Delete implements Statement {
         return this;
     }
 
+    public Delete withPreferringClause(PreferringClause preferringClause) {
+        this.setPreferringClause(preferringClause);
+        return this;
+    }
+
     public Delete withHasFrom(boolean hasFrom) {
         this.setHasFrom(hasFrom);
         return this;
     }
 
-    public Delete withModifierPriority(DeleteModifierPriority modifierPriority){
+    public Delete withModifierPriority(DeleteModifierPriority modifierPriority) {
         this.setModifierPriority(modifierPriority);
         return this;
     }
 
-    public Delete withModifierIgnore(boolean modifierIgnore){
+    public Delete withModifierIgnore(boolean modifierIgnore) {
         this.setModifierIgnore(modifierIgnore);
         return this;
     }
 
-    public Delete withModifierQuick(boolean modifierQuick){
+    public Delete withModifierQuick(boolean modifierQuick) {
         this.setModifierQuick(modifierQuick);
         return this;
-    }
-
-    public void setModifierPriority(DeleteModifierPriority modifierPriority) {
-        this.modifierPriority = modifierPriority;
     }
 
     public DeleteModifierPriority getModifierPriority() {
         return modifierPriority;
     }
 
-    public void setModifierIgnore(boolean modifierIgnore) {
-        this.modifierIgnore = modifierIgnore;
-    }
-
-    public void setModifierQuick(boolean modifierQuick) {
-        this.modifierQuick = modifierQuick;
+    public void setModifierPriority(DeleteModifierPriority modifierPriority) {
+        this.modifierPriority = modifierPriority;
     }
 
     public boolean isModifierIgnore() {
         return modifierIgnore;
     }
 
+    public void setModifierIgnore(boolean modifierIgnore) {
+        this.modifierIgnore = modifierIgnore;
+    }
+
     public boolean isModifierQuick() {
         return modifierQuick;
+    }
+
+    public void setModifierQuick(boolean modifierQuick) {
+        this.modifierQuick = modifierQuick;
     }
 
     public Delete addTables(Table... tables) {
@@ -369,13 +389,15 @@ public class Delete implements Statement {
     }
 
     public Delete addOrderByElements(OrderByElement... orderByElements) {
-        List<OrderByElement> collection = Optional.ofNullable(getOrderByElements()).orElseGet(ArrayList::new);
+        List<OrderByElement> collection =
+                Optional.ofNullable(getOrderByElements()).orElseGet(ArrayList::new);
         Collections.addAll(collection, orderByElements);
         return this.withOrderByElements(collection);
     }
 
     public Delete addOrderByElements(Collection<? extends OrderByElement> orderByElements) {
-        List<OrderByElement> collection = Optional.ofNullable(getOrderByElements()).orElseGet(ArrayList::new);
+        List<OrderByElement> collection =
+                Optional.ofNullable(getOrderByElements()).orElseGet(ArrayList::new);
         collection.addAll(orderByElements);
         return this.withOrderByElements(collection);
     }

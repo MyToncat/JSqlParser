@@ -9,15 +9,19 @@
  */
 package net.sf.jsqlparser.statement.create.table;
 
+import net.sf.jsqlparser.statement.select.PlainSelect;
+
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
-import static java.util.stream.Collectors.joining;
-import net.sf.jsqlparser.statement.select.PlainSelect;
 
-public class ColDataType {
+import static java.util.stream.Collectors.joining;
+
+public class ColDataType implements Serializable {
 
     private String dataType;
     private List<String> argumentsStringList;
@@ -28,6 +32,18 @@ public class ColDataType {
         // empty constructor
     }
 
+    public ColDataType(String dataType, int precision, int scale) {
+        this.dataType = dataType;
+
+        if (precision >= 0) {
+            this.dataType += " (" + (precision == Integer.MAX_VALUE ? "MAX" : precision);
+            if (scale >= 0) {
+                this.dataType += ", " + scale;
+            }
+            this.dataType += ")";
+        }
+    }
+
     public ColDataType(String dataType) {
         this.dataType = dataType;
     }
@@ -36,18 +52,18 @@ public class ColDataType {
         return argumentsStringList;
     }
 
-    public String getDataType() {
-        return dataType;
-    }
-
     public void setArgumentsStringList(List<String> list) {
         argumentsStringList = list;
+    }
+
+    public String getDataType() {
+        return dataType;
     }
 
     public void setDataType(String string) {
         dataType = string;
     }
-    
+
     public void setDataType(List<String> list) {
         dataType = list.stream().collect(joining("."));
     }
@@ -79,8 +95,9 @@ public class ColDataType {
             arraySpec.append("]");
         }
         return dataType
-                + (argumentsStringList != null ? " " + PlainSelect.
-                        getStringList(argumentsStringList, true, true) : "")
+                + (argumentsStringList != null
+                        ? " " + PlainSelect.getStringList(argumentsStringList, true, true)
+                        : "")
                 + arraySpec.toString()
                 + (characterSet != null ? " CHARACTER SET " + characterSet : "");
     }
@@ -106,13 +123,15 @@ public class ColDataType {
     }
 
     public ColDataType addArgumentsStringList(String... argumentsStringList) {
-        List<String> collection = Optional.ofNullable(getArgumentsStringList()).orElseGet(ArrayList::new);
+        List<String> collection =
+                Optional.ofNullable(getArgumentsStringList()).orElseGet(ArrayList::new);
         Collections.addAll(collection, argumentsStringList);
         return this.withArgumentsStringList(collection);
     }
 
     public ColDataType addArgumentsStringList(Collection<String> argumentsStringList) {
-        List<String> collection = Optional.ofNullable(getArgumentsStringList()).orElseGet(ArrayList::new);
+        List<String> collection =
+                Optional.ofNullable(getArgumentsStringList()).orElseGet(ArrayList::new);
         collection.addAll(argumentsStringList);
         return this.withArgumentsStringList(collection);
     }
@@ -127,5 +146,30 @@ public class ColDataType {
         List<Integer> collection = Optional.ofNullable(getArrayData()).orElseGet(ArrayList::new);
         collection.addAll(arrayData);
         return this.withArrayData(collection);
+    }
+
+    @Override
+    public final boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof ColDataType)) {
+            return false;
+        }
+
+        ColDataType that = (ColDataType) o;
+        return dataType.equalsIgnoreCase(that.dataType)
+                && Objects.equals(argumentsStringList, that.argumentsStringList)
+                && Objects.equals(characterSet, that.characterSet)
+                && Objects.equals(arrayData, that.arrayData);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = dataType.hashCode();
+        result = 31 * result + Objects.hashCode(argumentsStringList);
+        result = 31 * result + Objects.hashCode(characterSet);
+        result = 31 * result + Objects.hashCode(arrayData);
+        return result;
     }
 }

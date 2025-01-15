@@ -16,11 +16,6 @@ import java.util.List;
 
 public class SpannerInterleaveIn {
 
-    public enum OnDelete {
-        CASCADE,
-        NO_ACTION
-    }
-
     private Table table;
     private OnDelete onDelete;
 
@@ -60,7 +55,9 @@ public class SpannerInterleaveIn {
     @Override
     public String toString() {
         return "INTERLEAVE IN PARENT " + getTable().getName() +
-               (getOnDelete() == null ? "" : " ON DELETE " + (getOnDelete() == OnDelete.CASCADE ? "CASCADE" : "NO ACTION"));
+                (getOnDelete() == null ? ""
+                        : " ON DELETE "
+                                + (getOnDelete() == OnDelete.CASCADE ? "CASCADE" : "NO ACTION"));
     }
 
     public SpannerInterleaveIn withTable(Table table) {
@@ -71,5 +68,13 @@ public class SpannerInterleaveIn {
     public SpannerInterleaveIn withOnDelete(OnDelete action) {
         this.setOnDelete(action);
         return this;
+    }
+
+    public enum OnDelete {
+        CASCADE, NO_ACTION;
+
+        public static OnDelete from(String action) {
+            return Enum.valueOf(OnDelete.class, action.toUpperCase());
+        }
     }
 }

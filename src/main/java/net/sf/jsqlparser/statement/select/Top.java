@@ -10,8 +10,11 @@
 package net.sf.jsqlparser.statement.select;
 
 import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 
-public class Top {
+import java.io.Serializable;
+
+public class Top extends ASTNodeAccessImpl implements Serializable {
 
     private boolean hasParenthesis = false;
     private boolean isPercentage = false;
@@ -42,12 +45,12 @@ public class Top {
         this.isPercentage = percentage;
     }
 
-    public void setWithTies(boolean withTies) {
-        this.isWithTies = withTies;
-    }
-
     public boolean isWithTies() {
         return isWithTies;
+    }
+
+    public void setWithTies(boolean withTies) {
+        this.isWithTies = withTies;
     }
 
     @Override
@@ -83,4 +86,5 @@ public class Top {
     public <E extends Expression> E getExpression(Class<E> type) {
         return type.cast(getExpression());
     }
+
 }

@@ -9,15 +9,27 @@
  */
 package net.sf.jsqlparser.expression;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+
+import net.sf.jsqlparser.schema.MultiPartName;
 import net.sf.jsqlparser.statement.create.table.ColDataType;
 
-public class Alias {
+/**
+ * The type Alias for Tables, Columns or Views.
+ *
+ * We support three different types:
+ * 1) Simple String: `SELECT 1 AS "ALIAS"` when NAME is set and aliasColumns has no elements
+ * 2) UDF Aliases: `SELECT udf(1,2,3) AS "Alias(a,b,c)"` " when NAME!=null and aliasColumns has elements
+ * 3) Column lists for LATERAL VIEW: `SELECT * from a LATERAL VIEW EXPLODE ... AS a, b, c`, when NAME is NULL and aliasColumns has elements
+ * @see <a href="https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-lateral-view.html">Spark LATERAL VIEW</a>
+ */
+public class Alias implements Serializable {
 
     private String name;
     private boolean useAs = true;
@@ -34,6 +46,10 @@ public class Alias {
 
     public String getName() {
         return name;
+    }
+
+    public String getUnquotedName() {
+        return MultiPartName.unquote(name);
     }
 
     public void setName(String name) {
@@ -58,20 +74,20 @@ public class Alias {
 
     @Override
     public String toString() {
-        String alias = (useAs ? " AS " : " ") + name;
+        String alias = (useAs ? " AS " : " ") + (name != null ? name : "");
 
         if (aliasColumns != null && !aliasColumns.isEmpty()) {
-            String ac = "";
+            StringBuilder ac = new StringBuilder();
             for (AliasColumn col : aliasColumns) {
                 if (ac.length() > 0) {
-                    ac += ", ";
+                    ac.append(", ");
                 }
-                ac += col.name;
+                ac.append(col.name);
                 if (col.colDataType != null) {
-                    ac += " " + col.colDataType.toString();
+                    ac.append(" ").append(col.colDataType);
                 }
             }
-            alias += "(" + ac + ")";
+            alias += name != null ? "(" + ac + ")" : ac;
         }
 
         return alias;
@@ -92,19 +108,31 @@ public class Alias {
         return this;
     }
 
+
+    public Alias addAliasColumns(String... columnNames) {
+        List<AliasColumn> collection =
+                Optional.ofNullable(getAliasColumns()).orElseGet(ArrayList::new);
+        for (String columnName : columnNames) {
+            collection.add(new AliasColumn(columnName));
+        }
+        return this.withAliasColumns(collection);
+    }
+
     public Alias addAliasColumns(AliasColumn... aliasColumns) {
-        List<AliasColumn> collection = Optional.ofNullable(getAliasColumns()).orElseGet(ArrayList::new);
+        List<AliasColumn> collection =
+                Optional.ofNullable(getAliasColumns()).orElseGet(ArrayList::new);
         Collections.addAll(collection, aliasColumns);
         return this.withAliasColumns(collection);
     }
 
     public Alias addAliasColumns(Collection<? extends AliasColumn> aliasColumns) {
-        List<AliasColumn> collection = Optional.ofNullable(getAliasColumns()).orElseGet(ArrayList::new);
+        List<AliasColumn> collection =
+                Optional.ofNullable(getAliasColumns()).orElseGet(ArrayList::new);
         collection.addAll(aliasColumns);
         return this.withAliasColumns(collection);
     }
 
-    public static class AliasColumn {
+    public static class AliasColumn implements Serializable {
 
         public final String name;
         public final ColDataType colDataType;

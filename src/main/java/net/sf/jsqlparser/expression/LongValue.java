@@ -26,6 +26,9 @@ public class LongValue extends ASTNodeAccessImpl implements Expression {
     }
 
     public LongValue(final String value) {
+        if (value == null || value.length() == 0) {
+            throw new IllegalArgumentException("value can neither be null nor empty.");
+        }
         String val = value;
         if (val.charAt(0) == '+') {
             val = val.substring(1);
@@ -38,20 +41,20 @@ public class LongValue extends ASTNodeAccessImpl implements Expression {
     }
 
     @Override
-    public void accept(ExpressionVisitor expressionVisitor) {
-        expressionVisitor.visit(this);
+    public <T, S> T accept(ExpressionVisitor<T> expressionVisitor, S context) {
+        return expressionVisitor.visit(this, context);
     }
 
     public long getValue() {
         return Long.parseLong(stringValue);
     }
 
-    public BigInteger getBigIntegerValue() {
-        return new BigInteger(stringValue);
-    }
-
     public void setValue(long d) {
         stringValue = String.valueOf(d);
+    }
+
+    public BigInteger getBigIntegerValue() {
+        return new BigInteger(stringValue);
     }
 
     public LongValue withValue(long d) {

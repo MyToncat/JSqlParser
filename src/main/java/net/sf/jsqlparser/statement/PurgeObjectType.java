@@ -10,9 +10,12 @@
 package net.sf.jsqlparser.statement;
 
 /**
- *
  * @author <a href="mailto:andreas@manticore-projects.com">Andreas Reichel</a>
  */
 public enum PurgeObjectType {
-  TABLE, INDEX, RECYCLEBIN, DBA_RECYCLEBIN, TABLESPACE;
+    TABLE, INDEX, RECYCLEBIN, DBA_RECYCLEBIN, TABLESPACE;
+
+    public static PurgeObjectType from(String type) {
+        return Enum.valueOf(PurgeObjectType.class, type.toUpperCase());
+    }
 }

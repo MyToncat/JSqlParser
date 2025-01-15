@@ -15,6 +15,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
+
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.StatementVisitor;
@@ -23,6 +24,8 @@ public class Alter implements Statement {
 
     private Table table;
     private boolean useOnly = false;
+
+    private boolean useTableIfExists = false;
 
     private List<AlterExpression> alterExpressions;
 
@@ -42,6 +45,19 @@ public class Alter implements Statement {
         this.useOnly = useOnly;
     }
 
+    public boolean isUseTableIfExists() {
+        return useTableIfExists;
+    }
+
+    public void setUseTableIfExists(boolean useTableIfExists) {
+        this.useTableIfExists = useTableIfExists;
+    }
+
+    public Alter withUseTableIfExists(boolean useTableIfExists) {
+        this.useTableIfExists = useTableIfExists;
+        return this;
+    }
+
     public void addAlterExpression(AlterExpression alterExpression) {
         if (alterExpressions == null) {
             alterExpressions = new ArrayList<AlterExpression>();
@@ -58,8 +74,8 @@ public class Alter implements Statement {
     }
 
     @Override
-    public void accept(StatementVisitor statementVisitor) {
-        statementVisitor.visit(this);
+    public <T, S> T accept(StatementVisitor<T> statementVisitor, S context) {
+        return statementVisitor.visit(this, context);
     }
 
     @Override
@@ -71,7 +87,7 @@ public class Alter implements Statement {
             b.append("ONLY ");
         }
 
-        if (alterExpressions.size()>0 && alterExpressions.get(0).getOperation()==AlterOperation.RENAME_TABLE && alterExpressions.get(0).isUsingIfExists()) {
+        if (useTableIfExists) {
             b.append("IF EXISTS ");
         }
 
@@ -108,13 +124,15 @@ public class Alter implements Statement {
     }
 
     public Alter addAlterExpressions(AlterExpression... alterExpressions) {
-        List<AlterExpression> collection = Optional.ofNullable(getAlterExpressions()).orElseGet(ArrayList::new);
+        List<AlterExpression> collection =
+                Optional.ofNullable(getAlterExpressions()).orElseGet(ArrayList::new);
         Collections.addAll(collection, alterExpressions);
         return this.withAlterExpressions(collection);
     }
 
     public Alter addAlterExpressions(Collection<? extends AlterExpression> alterExpressions) {
-        List<AlterExpression> collection = Optional.ofNullable(getAlterExpressions()).orElseGet(ArrayList::new);
+        List<AlterExpression> collection =
+                Optional.ofNullable(getAlterExpressions()).orElseGet(ArrayList::new);
         collection.addAll(alterExpressions);
         return this.withAlterExpressions(collection);
     }
